@@ -455,6 +455,21 @@
 
   .folder-groups .group-item { background: #fff; }
 
+  .folder-children {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px 10px 22px;
+    border-left: 2px dashed var(--line);
+    margin: 0 12px 10px 18px;
+  }
+
+  .folder-empty-note {
+    font-size: 12px;
+    color: var(--ink-soft);
+    font-style: italic;
+    padding: 2px 0;
+  }
+
   .no-folder-heading {
     font-family: var(--mono);
     font-size: 11px;
@@ -769,19 +784,13 @@
     <div class="chips" id="teamChips"></div>
 
     <div class="groups-block">
-      <h3>Pastas (minhas pastas)</h3>
+      <h3>Pastas</h3>
       <div class="groups-head">
         <input type="text" id="folderNameInput" placeholder="Nome da pasta (ex: Zona Sul)">
-        <button class="mini-btn" id="saveFolderBtn">Criar pasta</button>
-      </div>
-
-      <h3 style="margin-top:18px;">Grupos salvos (compartilhados com todo mundo)</h3>
-      <div class="groups-head">
-        <input type="text" id="groupNameInput" placeholder="Nome do grupo (ex: Sul — Zona A)">
-        <select id="groupFolderSelect" title="Salvar dentro de uma das minhas pastas (opcional)">
-          <option value="">Sem pasta</option>
+        <select id="folderParentSelect" title="Criar dentro de outra pasta sua (opcional)">
+          <option value="">Pasta raiz (sem pasta-mãe)</option>
         </select>
-        <button class="mini-btn" id="saveGroupBtn">Salvar equipes atuais como grupo</button>
+        <button class="mini-btn" id="saveFolderBtn">Criar pasta</button>
       </div>
       <div class="groups-list" id="groupsList"></div>
     </div>
@@ -844,15 +853,13 @@ const UPDATE_PASSWORD = "igua2026";
 const CHUNK_SIZE = 300;
 const META_DOC = doc(db, "inconsistencias_meta", "current");
 const ROWS_COLLECTION = collection(db, "inconsistencias_rows");
-const GROUPS_COLLECTION = collection(db, "grupos");
 const PASTAS_COLLECTION = collection(db, "pastas");
 
 let sheetRows = [];
 let headers = [];
 let equipeColIndex = -1;
 let descColIndex = -1;
-let groupsCache = {}; // id -> { nome, equipes, pastaId, criadoPor, criadoPorEmail }
-let pastasCache = {}; // id -> { nome, criadoPor, criadoPorEmail }
+let pastasCache = {}; // id -> { nome, parentId, equipes: string[], criadoPor, criadoPorEmail }
 let currentUser = null; // { uid, email } of the logged-in user
 
 const HIDDEN_COLUMNS = ['PARECER'];
@@ -876,11 +883,9 @@ const tableHead = document.getElementById('tableHead');
 const tableBody = document.getElementById('tableBody');
 const tableWrap = document.getElementById('tableWrap');
 const inconsCards = document.getElementById('inconsCards');
-const groupNameInput = document.getElementById('groupNameInput');
-const groupFolderSelect = document.getElementById('groupFolderSelect');
-const saveGroupBtn = document.getElementById('saveGroupBtn');
 const groupsList = document.getElementById('groupsList');
 const folderNameInput = document.getElementById('folderNameInput');
+const folderParentSelect = document.getElementById('folderParentSelect');
 const saveFolderBtn = document.getElementById('saveFolderBtn');
 
 const loginScreen = document.getElementById('loginScreen');
@@ -1317,7 +1322,10 @@ function runFilter() {
 teamsInput.addEventListener('input', updateRunState);
 runBtn.addEventListener('click', runFilter);
 
-// ---------- Shared groups & folders (Firestore, real-time) ----------
+// ---------- Folders (nested, Firestore, real-time) ----------
+// A "pasta" (folder) can contain other pastas (via parentId) and/or a list
+// of equipes (teams) saved directly in it. There is no separate "grupo"
+// concept anymore — folders themselves hold the teams.
 
 function isMine(item) {
   // Ownership check: legacy items with no criadoPor are treated as unowned
@@ -1325,128 +1333,110 @@ function isMine(item) {
   return !!(item && currentUser && item.criadoPor && item.criadoPor === currentUser.uid);
 }
 
-function renderFolderSelectOptions() {
+// Options for the "create inside this folder" select when creating a NEW
+// folder. Only the current user's own folders can receive subfolders.
+function renderFolderParentOptions() {
   const myFolderIds = Object.keys(pastasCache)
     .filter(id => isMine(pastasCache[id]))
     .sort((a, b) => (pastasCache[a].nome || '').localeCompare(pastasCache[b].nome || '', 'pt-BR'));
 
-  const prevValue = groupFolderSelect.value;
-  groupFolderSelect.innerHTML = '<option value="">Sem pasta</option>';
+  const prevValue = folderParentSelect.value;
+  folderParentSelect.innerHTML = '<option value="">Pasta raiz (sem pasta-mãe)</option>';
   myFolderIds.forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
     opt.textContent = pastasCache[id].nome || '(sem nome)';
-    groupFolderSelect.appendChild(opt);
+    folderParentSelect.appendChild(opt);
   });
-  if (myFolderIds.includes(prevValue)) groupFolderSelect.value = prevValue;
+  if (myFolderIds.includes(prevValue)) folderParentSelect.value = prevValue;
 }
 
-function buildGroupItemEl(id, g) {
-  const teams = g.equipes || [];
-  const mine = isMine(g);
-  const row = document.createElement('div');
-  row.className = 'group-item';
-  row.innerHTML =
-    '<div class="group-info">' +
-      '<span class="group-name">' + escapeHtml(g.nome || '(sem nome)') + '</span>' +
-      '<span class="group-count">' + teams.length + ' equipe(s)</span>' +
-    '</div>' +
-    '<div class="group-actions">' +
-      '<button class="mini-btn use" data-id="' + id + '">Usar</button>' +
-      (mine ? '<button class="mini-btn del" data-id="' + id + '">Excluir</button>' : '') +
+function buildFolderEl(id, f) {
+  const teams = f.equipes || [];
+  const mine = isMine(f);
+  const childIds = Object.keys(pastasCache)
+    .filter(cid => pastasCache[cid].parentId === id)
+    .sort((a, b) => (pastasCache[a].nome || '').localeCompare(pastasCache[b].nome || '', 'pt-BR'));
+
+  const block = document.createElement('div');
+  block.className = 'folder-block';
+  block.innerHTML =
+    '<div class="folder-header">' +
+      '<div class="folder-title">' +
+        '<span class="folder-icon">▸</span>' +
+        '<span class="folder-name">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
+        '<span class="group-count">' + teams.length + ' equipe(s)</span>' +
+      '</div>' +
+      '<div class="folder-title">' +
+        '<span class="folder-owner">' + escapeHtml(f.criadoPorEmail || 'desconhecido') + '</span>' +
+        '<button class="mini-btn use-folder" data-id="' + id + '">Usar equipes</button>' +
+        (mine ? '<button class="mini-btn save-into-folder" data-id="' + id + '">Salvar equipes aqui</button>' : '') +
+        (mine ? '<button class="mini-btn del del-folder" data-id="' + id + '">Excluir pasta</button>' : '') +
+      '</div>' +
     '</div>';
-  return row;
+
+  if (childIds.length) {
+    const childrenWrap = document.createElement('div');
+    childrenWrap.className = 'folder-children';
+    childIds.forEach(cid => childrenWrap.appendChild(buildFolderEl(cid, pastasCache[cid])));
+    block.appendChild(childrenWrap);
+  }
+
+  return block;
 }
 
-function renderGroups() {
+function renderFolders() {
   groupsList.innerHTML = '';
 
-  const groupIds = Object.keys(groupsCache);
-  if (!groupIds.length) {
-    groupsList.innerHTML = '<div class="groups-empty">Nenhum grupo salvo ainda.</div>';
+  const allIds = Object.keys(pastasCache);
+  if (!allIds.length) {
+    groupsList.innerHTML = '<div class="groups-empty">Nenhuma pasta criada ainda.</div>';
     return;
   }
 
-  const folderIds = Object.keys(pastasCache).sort((a, b) =>
-    (pastasCache[a].nome || '').localeCompare(pastasCache[b].nome || '', 'pt-BR')
-  );
+  // Root folders: no parentId, or parentId pointing to a folder that no
+  // longer exists (avoids orphaned/cyclic folders disappearing from view).
+  const rootIds = allIds
+    .filter(id => !pastasCache[id].parentId || !pastasCache[pastasCache[id].parentId])
+    .sort((a, b) => (pastasCache[a].nome || '').localeCompare(pastasCache[b].nome || '', 'pt-BR'));
 
-  // Grouped-by-folder blocks
-  folderIds.forEach(fid => {
-    const f = pastasCache[fid];
-    const idsInFolder = groupIds
-      .filter(id => groupsCache[id].pastaId === fid)
-      .sort((a, b) => (groupsCache[a].nome || '').localeCompare(groupsCache[b].nome || '', 'pt-BR'));
-
-    if (!idsInFolder.length) return; // hide empty folders from the groups view (still visible has no groups)
-
-    const mineFolder = isMine(f);
-    const block = document.createElement('div');
-    block.className = 'folder-block';
-    block.innerHTML =
-      '<div class="folder-header">' +
-        '<div class="folder-title">' +
-          '<span class="folder-icon">▸</span>' +
-          '<span class="folder-name">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
-        '</div>' +
-        '<div class="folder-title">' +
-          '<span class="folder-owner">' + escapeHtml(f.criadoPorEmail || 'desconhecido') + '</span>' +
-          (mineFolder ? '<button class="mini-btn del-folder" data-id="' + fid + '">Excluir pasta</button>' : '') +
-        '</div>' +
-      '</div>';
-    const groupsWrap = document.createElement('div');
-    groupsWrap.className = 'folder-groups';
-    idsInFolder.forEach(id => groupsWrap.appendChild(buildGroupItemEl(id, groupsCache[id])));
-    block.appendChild(groupsWrap);
-    groupsList.appendChild(block);
-  });
-
-  // Ungrouped groups (no pastaId, or pastaId pointing to a folder that no longer exists)
-  const looseIds = groupIds
-    .filter(id => !groupsCache[id].pastaId || !pastasCache[groupsCache[id].pastaId])
-    .sort((a, b) => (groupsCache[a].nome || '').localeCompare(groupsCache[b].nome || '', 'pt-BR'));
-
-  if (looseIds.length) {
-    if (folderIds.some(fid => groupIds.some(id => groupsCache[id].pastaId === fid))) {
-      const heading = document.createElement('div');
-      heading.className = 'no-folder-heading';
-      heading.textContent = 'Sem pasta';
-      groupsList.appendChild(heading);
-    }
-    looseIds.forEach(id => groupsList.appendChild(buildGroupItemEl(id, groupsCache[id])));
-  }
+  rootIds.forEach(id => groupsList.appendChild(buildFolderEl(id, pastasCache[id])));
 }
-
-onSnapshot(GROUPS_COLLECTION, (snap) => {
-  groupsCache = {};
-  snap.forEach(d => { groupsCache[d.id] = d.data(); });
-  renderGroups();
-}, (err) => {
-  groupsList.innerHTML = '<div class="groups-empty">Não foi possível carregar os grupos: ' + err.message + '</div>';
-});
 
 onSnapshot(PASTAS_COLLECTION, (snap) => {
   pastasCache = {};
   snap.forEach(d => { pastasCache[d.id] = d.data(); });
-  renderFolderSelectOptions();
-  renderGroups();
+  renderFolderParentOptions();
+  renderFolders();
 }, (err) => {
-  console.error('Falha ao carregar pastas', err);
+  groupsList.innerHTML = '<div class="groups-empty">Não foi possível carregar as pastas: ' + err.message + '</div>';
 });
 
 saveFolderBtn.addEventListener('click', async () => {
   const name = folderNameInput.value.trim();
+  const parentId = folderParentSelect.value || null;
+
   if (!currentUser) return;
+
   if (!name) {
     statusEl.textContent = 'Dê um nome para a pasta antes de criar.';
     statusEl.style.color = 'var(--warn)';
     folderNameInput.focus();
     return;
   }
+  // A folder can only be created inside a folder the current user owns.
+  if (parentId && !isMine(pastasCache[parentId])) {
+    statusEl.textContent = 'Você só pode criar pastas dentro de pastas que você criou.';
+    statusEl.style.color = 'var(--warn)';
+    return;
+  }
+
   saveFolderBtn.disabled = true;
   try {
     await addDoc(PASTAS_COLLECTION, {
       nome: name,
+      parentId: parentId,
+      equipes: [],
       criadoPor: currentUser.uid,
       criadoPorEmail: currentUser.email
     });
@@ -1465,103 +1455,40 @@ folderNameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') saveFolderBtn.click();
 });
 
-saveGroupBtn.addEventListener('click', async () => {
-  const name = groupNameInput.value.trim();
-  const teams = parseTeams(teamsInput.value);
-  const pastaId = groupFolderSelect.value || null;
-
-  if (!currentUser) return;
-
-  if (!name) {
-    statusEl.textContent = 'Dê um nome para o grupo antes de salvar.';
-    statusEl.style.color = 'var(--warn)';
-    groupNameInput.focus();
-    return;
-  }
-  if (!teams.length) {
-    statusEl.textContent = 'Cole ao menos uma equipe antes de salvar o grupo.';
-    statusEl.style.color = 'var(--warn)';
-    return;
-  }
-  // A folder can only receive groups from the user who created it.
-  if (pastaId && !isMine(pastasCache[pastaId])) {
-    statusEl.textContent = 'Você só pode adicionar grupos nas pastas que você criou.';
-    statusEl.style.color = 'var(--warn)';
-    return;
-  }
-
-  saveGroupBtn.disabled = true;
-  try {
-    const existingId = Object.keys(groupsCache).find(
-      id => (groupsCache[id].nome || '').toLowerCase() === name.toLowerCase()
-    );
-    if (existingId) {
-      const existing = groupsCache[existingId];
-      if (!isMine(existing)) {
-        statusEl.textContent = 'Já existe um grupo com esse nome, criado por outro usuário. Escolha outro nome.';
-        statusEl.style.color = 'var(--warn)';
-        saveGroupBtn.disabled = false;
-        return;
-      }
-      await setDoc(doc(GROUPS_COLLECTION, existingId), {
-        nome: name,
-        equipes: teams,
-        pastaId: pastaId,
-        criadoPor: existing.criadoPor,
-        criadoPorEmail: existing.criadoPorEmail
-      });
-    } else {
-      await addDoc(GROUPS_COLLECTION, {
-        nome: name,
-        equipes: teams,
-        pastaId: pastaId,
-        criadoPor: currentUser.uid,
-        criadoPorEmail: currentUser.email
-      });
-    }
-    groupNameInput.value = '';
-    statusEl.textContent = 'Grupo "' + name + '" salvo com ' + teams.length + ' equipe(s).';
-    statusEl.style.color = 'var(--ok)';
-  } catch (err) {
-    statusEl.textContent = 'Erro ao salvar grupo: ' + err.message;
-    statusEl.style.color = 'var(--warn)';
-  } finally {
-    saveGroupBtn.disabled = false;
-  }
-});
-
-groupNameInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') saveGroupBtn.click();
-});
-
 groupsList.addEventListener('click', async (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
   const id = btn.dataset.id;
 
-  if (btn.classList.contains('use')) {
-    const g = groupsCache[id];
-    if (!g) return;
-    teamsInput.value = (g.equipes || []).join(' ');
+  if (btn.classList.contains('use-folder')) {
+    const f = pastasCache[id];
+    if (!f) return;
+    teamsInput.value = (f.equipes || []).join(' ');
     updateRunState();
     return;
   }
 
-  if (btn.classList.contains('del')) {
-    const g = groupsCache[id];
-    if (!g) return;
-    if (!isMine(g)) {
-      statusEl.textContent = 'Só quem criou o grupo pode excluí-lo.';
+  if (btn.classList.contains('save-into-folder')) {
+    const f = pastasCache[id];
+    if (!f) return;
+    if (!isMine(f)) {
+      statusEl.textContent = 'Só quem criou a pasta pode salvar equipes nela.';
       statusEl.style.color = 'var(--warn)';
       return;
     }
-    if (confirm('Excluir o grupo "' + (g.nome || '') + '"?')) {
-      try {
-        await deleteDoc(doc(GROUPS_COLLECTION, id));
-      } catch (err) {
-        statusEl.textContent = 'Erro ao excluir grupo: ' + err.message;
-        statusEl.style.color = 'var(--warn)';
-      }
+    const teams = parseTeams(teamsInput.value);
+    if (!teams.length) {
+      statusEl.textContent = 'Cole ao menos uma equipe antes de salvar na pasta.';
+      statusEl.style.color = 'var(--warn)';
+      return;
+    }
+    try {
+      await setDoc(doc(PASTAS_COLLECTION, id), { ...f, equipes: teams });
+      statusEl.textContent = 'Equipes salvas na pasta "' + (f.nome || '') + '".';
+      statusEl.style.color = 'var(--ok)';
+    } catch (err) {
+      statusEl.textContent = 'Erro ao salvar equipes na pasta: ' + err.message;
+      statusEl.style.color = 'var(--warn)';
     }
     return;
   }
@@ -1574,18 +1501,18 @@ groupsList.addEventListener('click', async (e) => {
       statusEl.style.color = 'var(--warn)';
       return;
     }
-    const hasGroups = Object.values(groupsCache).some(g => g.pastaId === id);
-    const msg = hasGroups
-      ? 'Excluir a pasta "' + (f.nome || '') + '"? Os grupos dentro dela vão ficar sem pasta.'
+    const hasChildren = Object.values(pastasCache).some(p => p.parentId === id);
+    const msg = hasChildren
+      ? 'Excluir a pasta "' + (f.nome || '') + '"? As subpastas dentro dela vão virar pastas raiz.'
       : 'Excluir a pasta "' + (f.nome || '') + '"?';
     if (confirm(msg)) {
       try {
         await deleteDoc(doc(PASTAS_COLLECTION, id));
-        // Detach any groups that pointed at this folder.
-        const affected = Object.keys(groupsCache).filter(gid => groupsCache[gid].pastaId === id);
-        for (const gid of affected) {
-          const g = groupsCache[gid];
-          await setDoc(doc(GROUPS_COLLECTION, gid), { ...g, pastaId: null });
+        // Detach any subfolders that pointed at this folder.
+        const affected = Object.keys(pastasCache).filter(pid => pastasCache[pid].parentId === id);
+        for (const pid of affected) {
+          const p = pastasCache[pid];
+          await setDoc(doc(PASTAS_COLLECTION, pid), { ...p, parentId: null });
         }
       } catch (err) {
         statusEl.textContent = 'Erro ao excluir pasta: ' + err.message;
