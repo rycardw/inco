@@ -869,13 +869,9 @@
         <span class="status-dot loading" id="statusDot"></span>
         <span class="data-status-text" id="dataStatusText">Carregando dados...</span>
       </div>
-      <button class="link-btn" id="toggleAdmin">Enviar / atualizar planilha</button>
     </div>
 
     <div class="admin-block" id="adminBlock">
-      <div class="field-row">
-        <input type="password" id="adminPassword" placeholder="Senha de atualização">
-      </div>
       <div class="dropzone" id="dropzone" tabindex="0">
         <input type="file" id="fileInput" accept=".xlsx,.xls">
         <div class="label" id="dzLabel">Clique para escolher o arquivo .xlsx, ou arraste aqui</div>
@@ -956,9 +952,26 @@ const db = getFirestore(fbApp);
 const auth = getAuth(fbApp);
 setPersistence(auth, inMemoryPersistence).catch(() => {});
 
-// --- Change this password to whatever your team agrees on. ---
-// Note: this is only a soft deterrent (visible in page source), not real security.
-const UPDATE_PASSWORD = "igua2026";
+// --- Admin status now comes from Firestore: collection "usuarios", one
+// document per user with the document ID equal to the user's UID, and a
+// boolean field "admin". Example: usuarios/<uid> => { admin: true }
+const USUARIOS_COLLECTION = collection(db, "usuarios");
+let currentUserIsAdmin = false; // refreshed right after login, see tryLogin()
+
+function isAdmin() {
+  return currentUserIsAdmin;
+}
+
+async function refreshAdminStatus() {
+  currentUserIsAdmin = false;
+  if (!currentUser) return;
+  try {
+    const snap = await getDoc(doc(USUARIOS_COLLECTION, currentUser.uid));
+    currentUserIsAdmin = !!(snap.exists() && snap.data().admin === true);
+  } catch (err) {
+    currentUserIsAdmin = false;
+  }
+}
 
 const CHUNK_SIZE = 300;
 const META_DOC = doc(db, "inconsistencias_meta", "current");
@@ -978,9 +991,7 @@ const HIDDEN_COLUMNS = ['PARECER'];
 
 const statusDot = document.getElementById('statusDot');
 const dataStatusText = document.getElementById('dataStatusText');
-const toggleAdmin = document.getElementById('toggleAdmin');
 const adminBlock = document.getElementById('adminBlock');
-const adminPassword = document.getElementById('adminPassword');
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const dzFilename = document.getElementById('dzFilename');
@@ -1017,6 +1028,8 @@ async function tryLogin() {
     currentUser = { uid: cred.user.uid, email: cred.user.email };
     loginScreen.style.display = 'none';
     appContent.style.display = 'block';
+    await refreshAdminStatus();
+    adminBlock.classList.toggle('open', isAdmin());
     loadSharedData();
     subscribeFolders();
   } catch (err) {
@@ -1125,16 +1138,11 @@ async function loadSharedData() {
 }
 
 // ---------- Admin: upload new spreadsheet ----------
-toggleAdmin.addEventListener('click', () => {
-  adminBlock.classList.toggle('open');
-});
-
 function handleFile(file) {
   if (!file) return;
 
-  const password = adminPassword.value;
-  if (password !== UPDATE_PASSWORD) {
-    statusEl.textContent = 'Senha incorreta. A planilha não foi enviada.';
+  if (!isAdmin()) {
+    statusEl.textContent = 'Só uma conta admin pode enviar/atualizar a planilha.';
     statusEl.style.color = 'var(--warn)';
     return;
   }
@@ -1175,8 +1183,6 @@ function handleFile(file) {
 
       statusEl.textContent = 'Base de dados atualizada para todos! (' + newRows.length + ' linhas)';
       statusEl.style.color = 'var(--ok)';
-      adminPassword.value = '';
-      adminBlock.classList.remove('open');
       await loadSharedData();
     } catch (err) {
       statusEl.textContent = 'Erro ao processar/enviar a planilha: ' + err.message;
