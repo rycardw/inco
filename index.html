@@ -39,7 +39,30 @@
     padding: 48px 24px 32px;
     max-width: 960px;
     margin: 0 auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
   }
+
+  .header-text { min-width: 0; }
+
+  .logout-btn {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    margin-top: 4px;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .logout-btn:hover { background: var(--warn); border-color: var(--warn); color: #fff; }
 
   .eyebrow {
     font-family: var(--mono);
@@ -427,7 +450,7 @@
 
   .folder-title {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
     min-width: 0;
   }
@@ -501,6 +524,8 @@
   }
 
   .folder-toggle.collapsed { transform: rotate(-90deg); }
+
+  .folder-ico { flex-shrink: 0; display: block; }
 
   .folder-body.collapsed { display: none; }
 
@@ -856,8 +881,11 @@
 
 <div id="appContent" style="display:none;">
 <header>
-  <div class="eyebrow">Iguá Sergipe · Inconsistências</div>
-  <h1>Filtro de Inconsistências por Equipe</h1>
+  <div class="header-text">
+    <div class="eyebrow">Iguá Sergipe · Inconsistências</div>
+    <h1>Filtro de Inconsistências por Equipe</h1>
+  </div>
+  <button class="logout-btn" id="logoutBtn" title="Sair da sua conta">Sair</button>
 </header>
 
 <main>
@@ -1018,6 +1046,7 @@ const loginUser = document.getElementById('loginUser');
 const loginPass = document.getElementById('loginPass');
 const loginBtn = document.getElementById('loginBtn');
 const loginError = document.getElementById('loginError');
+const logoutBtn = document.getElementById('logoutBtn');
 
 async function tryLogin() {
   loginError.textContent = '';
@@ -1041,9 +1070,34 @@ async function tryLogin() {
   }
 }
 
+async function doLogout() {
+  logoutBtn.disabled = true;
+  try {
+    if (foldersUnsub) { foldersUnsub(); foldersUnsub = null; }
+    await signOut(auth);
+  } catch (err) {
+    // Mesmo se o signOut falhar, seguimos limpando o estado local abaixo.
+  }
+  currentUser = null;
+  currentUserIsAdmin = false;
+  pastasCache = {};
+  sheetRows = [];
+  headers = [];
+  adminBlock.classList.remove('open');
+  resultsPanel.style.display = 'none';
+  teamsInput.value = '';
+  loginUser.value = '';
+  loginPass.value = '';
+  loginError.textContent = '';
+  appContent.style.display = 'none';
+  loginScreen.style.display = 'flex';
+  logoutBtn.disabled = false;
+}
+
 loginBtn.addEventListener('click', tryLogin);
 loginPass.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryLogin(); });
 loginUser.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginPass.focus(); });
+logoutBtn.addEventListener('click', doLogout);
 
 function findEquipeColumn(hdrs) {
   const normalized = hdrs.map(h => (h || '').toString().trim().toUpperCase());
@@ -1326,13 +1380,27 @@ function renderFlatTable(matchedRows, visibleIndices) {
   });
 }
 
+// Descriptions that are identical except for a number that changes from row
+// to row (e.g. a unit/matrícula code) should be treated as the same
+// inconsistency. We group by the description with every run of digits
+// collapsed to a single placeholder, so "...unidade 8509667 não possui..."
+// and "...unidade 3006298 não possui..." land in the same card.
+function normalizeDescForGrouping(desc) {
+  return desc.trim().toUpperCase().replace(/\d+/g, '#');
+}
+
 function groupRowsByDesc(rows) {
   const map = new Map();
   rows.forEach(row => {
     const raw = row[descColIndex] !== undefined && row[descColIndex] !== null ? row[descColIndex].toString() : '';
     const label = raw.trim();
-    const key = label.toUpperCase();
-    if (!map.has(key)) map.set(key, { label: label || '(sem descrição)', rows: [] });
+    const key = normalizeDescForGrouping(label);
+    if (!map.has(key)) {
+      // Generic display label: swap the varying number(s) for a placeholder
+      // so the card title reads as the shared pattern, not one specific row.
+      const displayLabel = label ? label.replace(/\d+/g, '####') : '(sem descrição)';
+      map.set(key, { label: displayLabel, rows: [] });
+    }
     map.get(key).rows.push(row);
   });
   return Array.from(map.values());
@@ -1473,6 +1541,18 @@ function renderFolderParentOptions() {
 
 // Returns true when `candidateId` is a descendant (child, grandchild, ...)
 // of `ancestorId`. Used to block drops that would create a cycle.
+let folderIconCounter = 0;
+function folderIconSvg() {
+  const gid = 'folderGrad' + (folderIconCounter++);
+  return '<svg class="folder-ico" width="19" height="15" viewBox="0 0 19 15" xmlns="http://www.w3.org/2000/svg">' +
+    '<defs><linearGradient id="' + gid + '" x1="9.5" y1="1" x2="9.5" y2="14" gradientUnits="userSpaceOnUse">' +
+      '<stop stop-color="#FFE9A8"/><stop offset="1" stop-color="#FFC53D"/>' +
+    '</linearGradient></defs>' +
+    '<path d="M1 3.2C1 2.53726 1.53726 2 2.2 2H7.1L8.6 3.4H16.8C17.4627 3.4 18 3.93726 18 4.6V12.3C18 12.9627 17.4627 13.5 16.8 13.5H2.2C1.53726 13.5 1 12.9627 1 12.3V3.2Z" fill="url(#' + gid + ')" stroke="#E8A93A" stroke-width="0.6"/>' +
+    '<path d="M1 3.2C1 2.53726 1.53726 2 2.2 2H7.1L8.35 3.15H2.2C1.64772 3.15 1.2 3.59772 1.2 4.15V4.4L1 3.2Z" fill="#FFF3CC"/>' +
+    '</svg>';
+}
+
 function isDescendant(candidateId, ancestorId) {
   let cur = pastasCache[candidateId];
   let guard = 0;
@@ -1525,6 +1605,7 @@ function buildFolderEl(id, f) {
   header.innerHTML =
     '<div class="folder-title">' +
       '<button class="folder-toggle' + (collapsed ? ' collapsed' : '') + '" data-id="' + id + '" title="Expandir/recolher pasta">▾</button>' +
+      folderIconSvg() +
       '<span class="folder-name">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
       '<span class="group-count">' + teams.length + ' equipe(s)' + (childIds.length ? ' · ' + childIds.length + ' subpasta(s)' : '') + '</span>' +
     '</div>' +
