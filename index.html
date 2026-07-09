@@ -470,6 +470,115 @@
     padding: 2px 0;
   }
 
+  /* --- Explorer-style tree: toggle, drag & drop, team chips --- */
+  .folder-header { user-select: none; }
+  .folder-header.draggable { cursor: grab; }
+  .folder-header.draggable:active { cursor: grabbing; }
+
+  .folder-block.dragging > .folder-header { opacity: 0.4; }
+
+  .folder-header.drag-over {
+    background: #eaf4f4;
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+    border-radius: 4px;
+  }
+
+  .folder-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--ink-soft);
+    font-size: 10px;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: transform 0.12s ease;
+  }
+
+  .folder-toggle.collapsed { transform: rotate(-90deg); }
+
+  .folder-body.collapsed { display: none; }
+
+  .folder-teams-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 12px 0;
+  }
+
+  .folder-team-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: #eaf4f4;
+    border: 1px solid var(--line);
+    color: var(--accent-deep);
+    padding: 3px 4px 3px 8px;
+    border-radius: 3px;
+  }
+
+  .folder-team-chip button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--warn);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+
+  .folder-team-chip button:hover { color: #fff; background: var(--warn); border-radius: 2px; }
+
+  .folder-add-team {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px 10px;
+  }
+
+  .folder-add-team input {
+    flex: 1;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #fff;
+    min-width: 0;
+  }
+
+  .folder-add-team input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .root-drop-zone {
+    display: none;
+    margin-top: 8px;
+    border: 2px dashed var(--line);
+    border-radius: 4px;
+    padding: 12px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  .root-drop-zone.show { display: block; }
+
+  .root-drop-zone.drag-over {
+    background: #eaf4f4;
+    border-color: var(--accent);
+    color: var(--accent-deep);
+  }
+
   .no-folder-heading {
     font-family: var(--mono);
     font-size: 11px;
@@ -793,6 +902,7 @@
         <button class="mini-btn" id="saveFolderBtn">Criar pasta</button>
       </div>
       <div class="groups-list" id="groupsList"></div>
+      <div class="root-drop-zone" id="rootDropZone">Solte aqui para mover a pasta para a raiz (fora de qualquer pasta-mãe)</div>
     </div>
   </section>
 
@@ -861,6 +971,8 @@ let equipeColIndex = -1;
 let descColIndex = -1;
 let pastasCache = {}; // id -> { nome, parentId, equipes: string[], criadoPor, criadoPorEmail }
 let currentUser = null; // { uid, email } of the logged-in user
+let collapsedIds = new Set(); // ids of folders currently collapsed in the tree
+let draggingFolderId = null; // id of the folder currently being dragged, if any
 
 const HIDDEN_COLUMNS = ['PARECER'];
 
@@ -887,6 +999,7 @@ const groupsList = document.getElementById('groupsList');
 const folderNameInput = document.getElementById('folderNameInput');
 const folderParentSelect = document.getElementById('folderParentSelect');
 const saveFolderBtn = document.getElementById('saveFolderBtn');
+const rootDropZone = document.getElementById('rootDropZone');
 
 const loginScreen = document.getElementById('loginScreen');
 const appContent = document.getElementById('appContent');
@@ -1352,37 +1465,147 @@ function renderFolderParentOptions() {
   if (myFolderIds.includes(prevValue)) folderParentSelect.value = prevValue;
 }
 
+// Returns true when `candidateId` is a descendant (child, grandchild, ...)
+// of `ancestorId`. Used to block drops that would create a cycle.
+function isDescendant(candidateId, ancestorId) {
+  let cur = pastasCache[candidateId];
+  let guard = 0;
+  while (cur && cur.parentId && guard < 50) {
+    if (cur.parentId === ancestorId) return true;
+    cur = pastasCache[cur.parentId];
+    guard++;
+  }
+  return false;
+}
+
+async function moveFolder(draggedId, newParentId) {
+  const f = pastasCache[draggedId];
+  if (!f) return;
+  if (!isMine(f)) {
+    statusEl.textContent = 'Você só pode mover pastas que você criou.';
+    statusEl.style.color = 'var(--warn)';
+    return;
+  }
+  if (newParentId && !isMine(pastasCache[newParentId])) {
+    statusEl.textContent = 'Você só pode mover uma pasta para dentro de pastas que você criou.';
+    statusEl.style.color = 'var(--warn)';
+    return;
+  }
+  if ((f.parentId || null) === (newParentId || null)) return;
+  try {
+    await setDoc(doc(PASTAS_COLLECTION, draggedId), { ...f, parentId: newParentId });
+    statusEl.textContent = 'Pasta "' + (f.nome || '') + '" movida.';
+    statusEl.style.color = 'var(--ok)';
+  } catch (err) {
+    statusEl.textContent = 'Erro ao mover pasta: ' + err.message;
+    statusEl.style.color = 'var(--warn)';
+  }
+}
+
 function buildFolderEl(id, f) {
   const teams = f.equipes || [];
   const mine = isMine(f);
   const childIds = Object.keys(pastasCache)
     .filter(cid => pastasCache[cid].parentId === id)
     .sort((a, b) => (pastasCache[a].nome || '').localeCompare(pastasCache[b].nome || '', 'pt-BR'));
+  const collapsed = collapsedIds.has(id);
 
   const block = document.createElement('div');
   block.className = 'folder-block';
-  block.innerHTML =
-    '<div class="folder-header">' +
-      '<div class="folder-title">' +
-        '<span class="folder-icon">▸</span>' +
-        '<span class="folder-name">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
-        '<span class="group-count">' + teams.length + ' equipe(s)</span>' +
-      '</div>' +
-      '<div class="folder-title">' +
-        '<span class="folder-owner">' + escapeHtml(f.criadoPorEmail || 'desconhecido') + '</span>' +
-        '<button class="mini-btn use-folder" data-id="' + id + '">Usar equipes</button>' +
-        (mine ? '<button class="mini-btn save-into-folder" data-id="' + id + '">Salvar equipes aqui</button>' : '') +
-        (mine ? '<button class="mini-btn del del-folder" data-id="' + id + '">Excluir pasta</button>' : '') +
-      '</div>' +
+  block.dataset.id = id;
+
+  const header = document.createElement('div');
+  header.className = 'folder-header';
+  header.innerHTML =
+    '<div class="folder-title">' +
+      '<button class="folder-toggle' + (collapsed ? ' collapsed' : '') + '" data-id="' + id + '" title="Expandir/recolher pasta">▾</button>' +
+      '<span class="folder-name">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
+      '<span class="group-count">' + teams.length + ' equipe(s)' + (childIds.length ? ' · ' + childIds.length + ' subpasta(s)' : '') + '</span>' +
+    '</div>' +
+    '<div class="folder-title">' +
+      '<span class="folder-owner">' + escapeHtml(f.criadoPorEmail || 'desconhecido') + '</span>' +
+      '<button class="mini-btn use-folder" data-id="' + id + '">Usar equipes</button>' +
+      (mine ? '<button class="mini-btn del del-folder" data-id="' + id + '">Excluir pasta</button>' : '') +
     '</div>';
+
+  if (mine) {
+    header.classList.add('draggable');
+    header.draggable = true;
+    header.addEventListener('dragstart', (e) => {
+      draggingFolderId = id;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', id);
+      block.classList.add('dragging');
+      rootDropZone.classList.add('show');
+    });
+    header.addEventListener('dragend', () => {
+      draggingFolderId = null;
+      block.classList.remove('dragging');
+      rootDropZone.classList.remove('show', 'drag-over');
+      document.querySelectorAll('.folder-header.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+  }
+
+  // This folder's header is also a drop target: dropping another (owned)
+  // folder here makes it a subfolder, as long as it doesn't create a cycle.
+  header.addEventListener('dragover', (e) => {
+    if (!draggingFolderId || !mine) return;
+    if (draggingFolderId === id || isDescendant(id, draggingFolderId)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    header.classList.add('drag-over');
+  });
+  header.addEventListener('dragleave', () => header.classList.remove('drag-over'));
+  header.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    header.classList.remove('drag-over');
+    const draggedId = draggingFolderId || e.dataTransfer.getData('text/plain');
+    if (!draggedId || draggedId === id || !mine) return;
+    if (isDescendant(id, draggedId)) return;
+    await moveFolder(draggedId, id);
+  });
+
+  block.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'folder-body' + (collapsed ? ' collapsed' : '');
+
+  const teamsWrap = document.createElement('div');
+  teamsWrap.className = 'folder-teams-list';
+  if (teams.length) {
+    teams.forEach(t => {
+      const chip = document.createElement('span');
+      chip.className = 'folder-team-chip';
+      chip.innerHTML = escapeHtml(t) +
+        (mine ? ' <button class="del-team" data-id="' + id + '" data-team="' + escapeHtml(t) + '" title="Remover esta equipe da pasta">×</button>' : '');
+      teamsWrap.appendChild(chip);
+    });
+  } else {
+    const empty = document.createElement('span');
+    empty.className = 'folder-empty-note';
+    empty.textContent = 'Nenhuma equipe nesta pasta.';
+    teamsWrap.appendChild(empty);
+  }
+  body.appendChild(teamsWrap);
+
+  if (mine) {
+    const addRow = document.createElement('div');
+    addRow.className = 'folder-add-team';
+    addRow.innerHTML =
+      '<input type="text" placeholder="Adicionar equipe(s) nesta pasta, ex: SER050T SER052T" data-id="' + id + '">' +
+      '<button class="mini-btn add-team-btn" data-id="' + id + '">Adicionar</button>';
+    body.appendChild(addRow);
+  }
 
   if (childIds.length) {
     const childrenWrap = document.createElement('div');
     childrenWrap.className = 'folder-children';
     childIds.forEach(cid => childrenWrap.appendChild(buildFolderEl(cid, pastasCache[cid])));
-    block.appendChild(childrenWrap);
+    body.appendChild(childrenWrap);
   }
 
+  block.appendChild(body);
   return block;
 }
 
@@ -1470,6 +1693,12 @@ groupsList.addEventListener('click', async (e) => {
   if (!btn) return;
   const id = btn.dataset.id;
 
+  if (btn.classList.contains('folder-toggle')) {
+    if (collapsedIds.has(id)) collapsedIds.delete(id); else collapsedIds.add(id);
+    renderFolders();
+    return;
+  }
+
   if (btn.classList.contains('use-folder')) {
     const f = pastasCache[id];
     if (!f) return;
@@ -1478,26 +1707,47 @@ groupsList.addEventListener('click', async (e) => {
     return;
   }
 
-  if (btn.classList.contains('save-into-folder')) {
+  if (btn.classList.contains('del-team')) {
     const f = pastasCache[id];
     if (!f) return;
     if (!isMine(f)) {
-      statusEl.textContent = 'Só quem criou a pasta pode salvar equipes nela.';
+      statusEl.textContent = 'Só quem criou a pasta pode remover equipes dela.';
       statusEl.style.color = 'var(--warn)';
       return;
     }
-    const teams = parseTeams(teamsInput.value);
-    if (!teams.length) {
-      statusEl.textContent = 'Cole ao menos uma equipe antes de salvar na pasta.';
-      statusEl.style.color = 'var(--warn)';
-      return;
-    }
+    const team = btn.dataset.team;
+    const newTeams = (f.equipes || []).filter(t => t !== team);
     try {
-      await setDoc(doc(PASTAS_COLLECTION, id), { ...f, equipes: teams });
-      statusEl.textContent = 'Equipes salvas na pasta "' + (f.nome || '') + '".';
-      statusEl.style.color = 'var(--ok)';
+      await setDoc(doc(PASTAS_COLLECTION, id), { ...f, equipes: newTeams });
     } catch (err) {
-      statusEl.textContent = 'Erro ao salvar equipes na pasta: ' + err.message;
+      statusEl.textContent = 'Erro ao remover equipe: ' + err.message;
+      statusEl.style.color = 'var(--warn)';
+    }
+    return;
+  }
+
+  if (btn.classList.contains('add-team-btn')) {
+    const f = pastasCache[id];
+    if (!f) return;
+    if (!isMine(f)) {
+      statusEl.textContent = 'Só quem criou a pasta pode adicionar equipes nela.';
+      statusEl.style.color = 'var(--warn)';
+      return;
+    }
+    const input = groupsList.querySelector('.folder-add-team input[data-id="' + id + '"]');
+    if (!input) return;
+    const newOnes = parseTeams(input.value);
+    if (!newOnes.length) {
+      statusEl.textContent = 'Digite ao menos uma equipe para adicionar.';
+      statusEl.style.color = 'var(--warn)';
+      input.focus();
+      return;
+    }
+    const merged = Array.from(new Set([...(f.equipes || []), ...newOnes]));
+    try {
+      await setDoc(doc(PASTAS_COLLECTION, id), { ...f, equipes: merged });
+    } catch (err) {
+      statusEl.textContent = 'Erro ao adicionar equipe(s): ' + err.message;
       statusEl.style.color = 'var(--warn)';
     }
     return;
@@ -1530,6 +1780,30 @@ groupsList.addEventListener('click', async (e) => {
       }
     }
   }
+});
+
+groupsList.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches('.folder-add-team input')) {
+    e.preventDefault();
+    const id = e.target.dataset.id;
+    const addBtn = groupsList.querySelector('.add-team-btn[data-id="' + id + '"]');
+    if (addBtn) addBtn.click();
+  }
+});
+
+rootDropZone.addEventListener('dragover', (e) => {
+  if (!draggingFolderId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  rootDropZone.classList.add('drag-over');
+});
+rootDropZone.addEventListener('dragleave', () => rootDropZone.classList.remove('drag-over'));
+rootDropZone.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  rootDropZone.classList.remove('drag-over');
+  const draggedId = draggingFolderId || e.dataTransfer.getData('text/plain');
+  if (!draggedId) return;
+  await moveFolder(draggedId, null);
 });
 
 // ---------- Init ----------
