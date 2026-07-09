@@ -905,6 +905,7 @@ async function tryLogin() {
     loginScreen.style.display = 'none';
     appContent.style.display = 'block';
     loadSharedData();
+    subscribeFolders();
   } catch (err) {
     loginError.textContent = 'E-mail ou senha incorretos.';
     loginPass.value = '';
@@ -1403,14 +1404,23 @@ function renderFolders() {
   rootIds.forEach(id => groupsList.appendChild(buildFolderEl(id, pastasCache[id])));
 }
 
-onSnapshot(PASTAS_COLLECTION, (snap) => {
-  pastasCache = {};
-  snap.forEach(d => { pastasCache[d.id] = d.data(); });
-  renderFolderParentOptions();
-  renderFolders();
-}, (err) => {
-  groupsList.innerHTML = '<div class="groups-empty">Não foi possível carregar as pastas: ' + err.message + '</div>';
-});
+// Só é seguro assinar esse listener DEPOIS do login, porque as regras do
+// Firestore exigem request.auth != null para ler a coleção "pastas".
+// Se assinado antes (ex: no carregamento da página), o Firestore nega o
+// acesso imediatamente e o listener não tenta de novo sozinho.
+let foldersUnsub = null;
+
+function subscribeFolders() {
+  if (foldersUnsub) return; // já inscrito, evita duplicar o listener
+  foldersUnsub = onSnapshot(PASTAS_COLLECTION, (snap) => {
+    pastasCache = {};
+    snap.forEach(d => { pastasCache[d.id] = d.data(); });
+    renderFolderParentOptions();
+    renderFolders();
+  }, (err) => {
+    groupsList.innerHTML = '<div class="groups-empty">Não foi possível carregar as pastas: ' + err.message + '</div>';
+  });
+}
 
 saveFolderBtn.addEventListener('click', async () => {
   const name = folderNameInput.value.trim();
