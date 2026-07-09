@@ -397,6 +397,73 @@
     flex-shrink: 0;
   }
 
+  .groups-head select {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 9px 10px;
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--ink);
+    background: #fbfdfd;
+    max-width: 180px;
+  }
+
+  .folder-block {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fbfdfd;
+    margin-bottom: 8px;
+  }
+
+  .folder-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+
+  .folder-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .folder-icon { font-family: var(--mono); color: var(--accent-deep); }
+
+  .folder-name {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--ink);
+  }
+
+  .folder-owner {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  .folder-groups {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .folder-groups .group-item { background: #fff; }
+
+  .no-folder-heading {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 14px 0 8px;
+  }
+
   .run-row {
     display: flex;
     align-items: center;
@@ -500,6 +567,83 @@
     margin-bottom: 8px;
   }
 
+  /* --- Inconsistency cards (grouped by description) --- */
+  .incons-cards {
+    display: grid;
+    gap: 10px;
+  }
+
+  .incons-card {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .incons-card-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--sans);
+    color: var(--ink);
+  }
+
+  .incons-card-head:hover { background: #f4f9f9; }
+
+  .incons-card-title {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .incons-card-count {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--accent-deep);
+    background: #e3f1f1;
+    padding: 3px 9px;
+    border-radius: 100px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .incons-toggle {
+    font-family: var(--mono);
+    font-size: 16px;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--ink-soft);
+    flex-shrink: 0;
+    transition: transform .15s ease, color .15s ease, border-color .15s ease;
+  }
+
+  .incons-card.open .incons-toggle {
+    transform: rotate(45deg);
+    border-color: var(--accent);
+    color: var(--accent-deep);
+  }
+
+  .incons-card-body {
+    border-top: 1px solid var(--line);
+  }
+
+  .incons-card-body .table-wrap {
+    border: none;
+    border-radius: 0;
+  }
+
   footer {
     text-align: center;
     padding: 20px;
@@ -511,14 +655,85 @@
   @media (max-width: 600px) {
     .panel { padding: 20px; }
   }
+
+  /* --- Login screen --- */
+  .login-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+
+  .login-box {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 340px;
+    text-align: center;
+  }
+
+  .login-eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 10px;
+  }
+
+  .login-title {
+    font-size: 22px;
+    margin: 0 0 24px;
+    color: var(--ink);
+  }
+
+  .login-box input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-family: var(--sans);
+    font-size: 14px;
+    margin-bottom: 12px;
+    background: #fbfdfd;
+  }
+
+  .login-box button {
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .login-error {
+    font-size: 12.5px;
+    color: var(--warn);
+    min-height: 16px;
+    margin: 0 0 10px;
+  }
 </style>
 </head>
 <body>
 
+<div id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <div class="login-eyebrow">Iguá Sergipe · Inconsistências</div>
+    <h1 class="login-title">Acesso restrito</h1>
+    <p class="login-error" id="loginError"></p>
+    <input type="email" id="loginUser" placeholder="E-mail" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="Senha" autocomplete="current-password">
+    <button class="primary" id="loginBtn">Entrar</button>
+  </div>
+</div>
+
+<div id="appContent" style="display:none;">
 <header>
-  <div class="eyebrow">Iguá Sergipe · Fiscalização</div>
+  <div class="eyebrow">Iguá Sergipe · Inconsistências</div>
   <h1>Filtro de Inconsistências por Equipe</h1>
-  <p>A base de dados é compartilhada: alguém envia a planilha uma vez, e todo mundo que acessar o site já vê os dados, cria grupos de equipes e filtra as inconsistências.</p>
 </header>
 
 <main>
@@ -534,7 +749,6 @@
     </div>
 
     <div class="admin-block" id="adminBlock">
-      <p class="hint">Isso substitui a base de dados para <b>todas as pessoas</b> que acessarem o site. Cole a senha combinada com a equipe antes de enviar.</p>
       <div class="field-row">
         <input type="password" id="adminPassword" placeholder="Senha de atualização">
       </div>
@@ -548,7 +762,6 @@
 
   <section class="panel" data-step="02 · Equipes">
     <h2>Cole as equipes</h2>
-    <p class="hint">Exemplo: SER050T SER052T, SER055T,SER056T SER103T — em qualquer ordem, com ou sem separador.</p>
     <textarea id="teamsInput" placeholder="SER050T SER052T SER055T SER056T SER103T SER133T ..."></textarea>
     <div class="counts">
       <span>Equipes detectadas: <b id="teamCount">0</b></span>
@@ -556,9 +769,18 @@
     <div class="chips" id="teamChips"></div>
 
     <div class="groups-block">
-      <h3>Grupos salvos (compartilhados com todo mundo)</h3>
+      <h3>Pastas (minhas pastas)</h3>
+      <div class="groups-head">
+        <input type="text" id="folderNameInput" placeholder="Nome da pasta (ex: Zona Sul)">
+        <button class="mini-btn" id="saveFolderBtn">Criar pasta</button>
+      </div>
+
+      <h3 style="margin-top:18px;">Grupos salvos (compartilhados com todo mundo)</h3>
       <div class="groups-head">
         <input type="text" id="groupNameInput" placeholder="Nome do grupo (ex: Sul — Zona A)">
+        <select id="groupFolderSelect" title="Salvar dentro de uma das minhas pastas (opcional)">
+          <option value="">Sem pasta</option>
+        </select>
         <button class="mini-btn" id="saveGroupBtn">Salvar equipes atuais como grupo</button>
       </div>
       <div class="groups-list" id="groupsList"></div>
@@ -575,17 +797,19 @@
       <h2>Linhas encontradas</h2>
       <span class="results-meta" id="resultsMeta"></span>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap" id="tableWrap">
       <table id="resultsTable">
         <thead><tr id="tableHead"></tr></thead>
         <tbody id="tableBody"></tbody>
       </table>
     </div>
+    <div class="incons-cards" id="inconsCards" style="display:none;"></div>
   </section>
 
 </main>
 
 <footer>Dados armazenados no Firebase (Firestore) do projeto — compartilhados entre todos os acessos ao site.</footer>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -594,6 +818,10 @@ import {
   collection, getDocs, query, orderBy, onSnapshot,
   writeBatch, serverTimestamp, addDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut,
+  setPersistence, inMemoryPersistence
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDzPpBgJrsthbdLQZHw43REDOK_isvU3Mw",
@@ -606,6 +834,8 @@ const firebaseConfig = {
 
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+setPersistence(auth, inMemoryPersistence).catch(() => {});
 
 // --- Change this password to whatever your team agrees on. ---
 // Note: this is only a soft deterrent (visible in page source), not real security.
@@ -615,11 +845,15 @@ const CHUNK_SIZE = 300;
 const META_DOC = doc(db, "inconsistencias_meta", "current");
 const ROWS_COLLECTION = collection(db, "inconsistencias_rows");
 const GROUPS_COLLECTION = collection(db, "grupos");
+const PASTAS_COLLECTION = collection(db, "pastas");
 
 let sheetRows = [];
 let headers = [];
 let equipeColIndex = -1;
-let groupsCache = {}; // id -> { nome, equipes }
+let descColIndex = -1;
+let groupsCache = {}; // id -> { nome, equipes, pastaId, criadoPor, criadoPorEmail }
+let pastasCache = {}; // id -> { nome, criadoPor, criadoPorEmail }
+let currentUser = null; // { uid, email } of the logged-in user
 
 const HIDDEN_COLUMNS = ['PARECER'];
 
@@ -640,14 +874,61 @@ const resultsPanel = document.getElementById('results-panel');
 const resultsMeta = document.getElementById('resultsMeta');
 const tableHead = document.getElementById('tableHead');
 const tableBody = document.getElementById('tableBody');
+const tableWrap = document.getElementById('tableWrap');
+const inconsCards = document.getElementById('inconsCards');
 const groupNameInput = document.getElementById('groupNameInput');
+const groupFolderSelect = document.getElementById('groupFolderSelect');
 const saveGroupBtn = document.getElementById('saveGroupBtn');
 const groupsList = document.getElementById('groupsList');
+const folderNameInput = document.getElementById('folderNameInput');
+const saveFolderBtn = document.getElementById('saveFolderBtn');
+
+const loginScreen = document.getElementById('loginScreen');
+const appContent = document.getElementById('appContent');
+const loginUser = document.getElementById('loginUser');
+const loginPass = document.getElementById('loginPass');
+const loginBtn = document.getElementById('loginBtn');
+const loginError = document.getElementById('loginError');
+
+async function tryLogin() {
+  loginError.textContent = '';
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Entrando...';
+  try {
+    const cred = await signInWithEmailAndPassword(auth, loginUser.value.trim(), loginPass.value);
+    currentUser = { uid: cred.user.uid, email: cred.user.email };
+    loginScreen.style.display = 'none';
+    appContent.style.display = 'block';
+    loadSharedData();
+  } catch (err) {
+    loginError.textContent = 'E-mail ou senha incorretos.';
+    loginPass.value = '';
+  } finally {
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Entrar';
+  }
+}
+
+loginBtn.addEventListener('click', tryLogin);
+loginPass.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryLogin(); });
+loginUser.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginPass.focus(); });
 
 function findEquipeColumn(hdrs) {
   const normalized = hdrs.map(h => (h || '').toString().trim().toUpperCase());
   let idx = normalized.findIndex(h => h === 'EQUIPE');
   if (idx === -1) idx = normalized.findIndex(h => h.includes('EQUIPE'));
+  return idx;
+}
+
+function normalizeHeader(h) {
+  return (h || '').toString().trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function findDescColumn(hdrs) {
+  const normalized = hdrs.map(normalizeHeader);
+  let idx = normalized.findIndex(h => h === 'INCONSISTENCIA');
+  if (idx === -1) idx = normalized.findIndex(h => h.includes('INCONSISTENCIA'));
+  if (idx === -1) idx = normalized.findIndex(h => h.includes('DESCRICAO'));
   return idx;
 }
 
@@ -680,12 +961,14 @@ async function loadSharedData() {
       headers = [];
       sheetRows = [];
       equipeColIndex = -1;
+      descColIndex = -1;
       updateRunState();
       return;
     }
     const meta = metaSnap.data();
     headers = meta.headers || [];
     equipeColIndex = findEquipeColumn(headers);
+    descColIndex = findDescColumn(headers);
 
     const rowsQuery = query(ROWS_COLLECTION, orderBy('index'));
     const rowsSnap = await getDocs(rowsQuery);
@@ -867,6 +1150,118 @@ function updateRunState() {
   runBtn.disabled = !(sheetRows.length && equipeColIndex !== -1 && teams.length);
 }
 
+function buildRowTable(rows, visibleIndices) {
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  visibleIndices.forEach(i => {
+    const th = document.createElement('th');
+    th.textContent = headers[i];
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+
+  const tbody = document.createElement('tbody');
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    visibleIndices.forEach(i => {
+      const td = document.createElement('td');
+      const val = row[i] !== undefined ? row[i] : '';
+      td.textContent = val;
+      if (i === equipeColIndex) td.classList.add('equipe');
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  return table;
+}
+
+function renderFlatTable(matchedRows, visibleIndices) {
+  tableHead.innerHTML = '';
+  visibleIndices.forEach(i => {
+    const th = document.createElement('th');
+    th.textContent = headers[i];
+    tableHead.appendChild(th);
+  });
+
+  tableBody.innerHTML = '';
+  matchedRows.forEach(row => {
+    const tr = document.createElement('tr');
+    visibleIndices.forEach(i => {
+      const td = document.createElement('td');
+      const val = row[i] !== undefined ? row[i] : '';
+      td.textContent = val;
+      if (i === equipeColIndex) td.classList.add('equipe');
+      tr.appendChild(td);
+    });
+    tableBody.appendChild(tr);
+  });
+}
+
+function groupRowsByDesc(rows) {
+  const map = new Map();
+  rows.forEach(row => {
+    const raw = row[descColIndex] !== undefined && row[descColIndex] !== null ? row[descColIndex].toString() : '';
+    const label = raw.trim();
+    const key = label.toUpperCase();
+    if (!map.has(key)) map.set(key, { label: label || '(sem descrição)', rows: [] });
+    map.get(key).rows.push(row);
+  });
+  return Array.from(map.values());
+}
+
+function renderInconsCards(matchedRows, visibleIndices) {
+  const groups = groupRowsByDesc(matchedRows);
+  inconsCards.innerHTML = '';
+
+  groups.forEach(group => {
+    const card = document.createElement('div');
+    card.className = 'incons-card';
+
+    const headBtn = document.createElement('button');
+    headBtn.type = 'button';
+    headBtn.className = 'incons-card-head';
+
+    const title = document.createElement('span');
+    title.className = 'incons-card-title';
+    title.textContent = group.label;
+
+    const count = document.createElement('span');
+    count.className = 'incons-card-count';
+    count.textContent = group.rows.length + (group.rows.length === 1 ? ' ocorrência' : ' ocorrências');
+
+    const toggle = document.createElement('span');
+    toggle.className = 'incons-toggle';
+    toggle.textContent = '+';
+
+    headBtn.appendChild(title);
+    headBtn.appendChild(count);
+    headBtn.appendChild(toggle);
+
+    const body = document.createElement('div');
+    body.className = 'incons-card-body';
+    body.hidden = true;
+
+    const bodyWrap = document.createElement('div');
+    bodyWrap.className = 'table-wrap';
+    bodyWrap.appendChild(buildRowTable(group.rows, visibleIndices));
+    body.appendChild(bodyWrap);
+
+    headBtn.addEventListener('click', () => {
+      const isOpen = card.classList.toggle('open');
+      body.hidden = !isOpen;
+      toggle.textContent = isOpen ? '×' : '+';
+    });
+
+    card.appendChild(headBtn);
+    card.appendChild(body);
+    inconsCards.appendChild(card);
+  });
+}
+
 function runFilter() {
   const teams = parseTeams(teamsInput.value);
   const teamSet = new Set(teams);
@@ -880,18 +1275,21 @@ function runFilter() {
     .map((h, i) => i)
     .filter(i => !HIDDEN_COLUMNS.includes((headers[i] || '').toUpperCase()));
 
-  tableHead.innerHTML = '';
-  visibleIndices.forEach(i => {
-    const th = document.createElement('th');
-    th.textContent = headers[i];
-    tableHead.appendChild(th);
-  });
-
-  tableBody.innerHTML = '';
+  resultsPanel.style.display = 'block';
 
   if (!matchedRows.length) {
-    resultsPanel.style.display = 'block';
+    tableWrap.style.display = 'block';
+    inconsCards.style.display = 'none';
     resultsMeta.textContent = '0 de ' + sheetRows.length + ' linhas';
+
+    tableHead.innerHTML = '';
+    visibleIndices.forEach(i => {
+      const th = document.createElement('th');
+      th.textContent = headers[i];
+      tableHead.appendChild(th);
+    });
+
+    tableBody.innerHTML = '';
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = visibleIndices.length || 1;
@@ -902,19 +1300,16 @@ function runFilter() {
     return;
   }
 
-  matchedRows.forEach(row => {
-    const tr = document.createElement('tr');
-    visibleIndices.forEach(i => {
-      const td = document.createElement('td');
-      const val = row[i] !== undefined ? row[i] : '';
-      td.textContent = val;
-      if (i === equipeColIndex) td.classList.add('equipe');
-      tr.appendChild(td);
-    });
-    tableBody.appendChild(tr);
-  });
+  if (descColIndex !== -1) {
+    tableWrap.style.display = 'none';
+    inconsCards.style.display = 'grid';
+    renderInconsCards(matchedRows, visibleIndices);
+  } else {
+    tableWrap.style.display = 'block';
+    inconsCards.style.display = 'none';
+    renderFlatTable(matchedRows, visibleIndices);
+  }
 
-  resultsPanel.style.display = 'block';
   resultsMeta.textContent = matchedRows.length + ' de ' + sheetRows.length + ' linhas · ' + teamSet.size + ' equipe(s) buscada(s)';
   resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -922,35 +1317,104 @@ function runFilter() {
 teamsInput.addEventListener('input', updateRunState);
 runBtn.addEventListener('click', runFilter);
 
-// ---------- Shared groups (Firestore, real-time) ----------
-function renderGroups() {
-  const ids = Object.keys(groupsCache).sort((a, b) =>
-    (groupsCache[a].nome || '').localeCompare(groupsCache[b].nome || '', 'pt-BR')
-  );
+// ---------- Shared groups & folders (Firestore, real-time) ----------
 
+function isMine(item) {
+  // Ownership check: legacy items with no criadoPor are treated as unowned
+  // (nobody can delete them except by editing Firestore directly).
+  return !!(item && currentUser && item.criadoPor && item.criadoPor === currentUser.uid);
+}
+
+function renderFolderSelectOptions() {
+  const myFolderIds = Object.keys(pastasCache)
+    .filter(id => isMine(pastasCache[id]))
+    .sort((a, b) => (pastasCache[a].nome || '').localeCompare(pastasCache[b].nome || '', 'pt-BR'));
+
+  const prevValue = groupFolderSelect.value;
+  groupFolderSelect.innerHTML = '<option value="">Sem pasta</option>';
+  myFolderIds.forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = pastasCache[id].nome || '(sem nome)';
+    groupFolderSelect.appendChild(opt);
+  });
+  if (myFolderIds.includes(prevValue)) groupFolderSelect.value = prevValue;
+}
+
+function buildGroupItemEl(id, g) {
+  const teams = g.equipes || [];
+  const mine = isMine(g);
+  const row = document.createElement('div');
+  row.className = 'group-item';
+  row.innerHTML =
+    '<div class="group-info">' +
+      '<span class="group-name">' + escapeHtml(g.nome || '(sem nome)') + '</span>' +
+      '<span class="group-count">' + teams.length + ' equipe(s)</span>' +
+    '</div>' +
+    '<div class="group-actions">' +
+      '<button class="mini-btn use" data-id="' + id + '">Usar</button>' +
+      (mine ? '<button class="mini-btn del" data-id="' + id + '">Excluir</button>' : '') +
+    '</div>';
+  return row;
+}
+
+function renderGroups() {
   groupsList.innerHTML = '';
 
-  if (!ids.length) {
+  const groupIds = Object.keys(groupsCache);
+  if (!groupIds.length) {
     groupsList.innerHTML = '<div class="groups-empty">Nenhum grupo salvo ainda.</div>';
     return;
   }
 
-  ids.forEach(id => {
-    const g = groupsCache[id];
-    const teams = g.equipes || [];
-    const row = document.createElement('div');
-    row.className = 'group-item';
-    row.innerHTML =
-      '<div class="group-info">' +
-        '<span class="group-name">' + escapeHtml(g.nome || '(sem nome)') + '</span>' +
-        '<span class="group-count">' + teams.length + ' equipe(s)</span>' +
-      '</div>' +
-      '<div class="group-actions">' +
-        '<button class="mini-btn use" data-id="' + id + '">Usar</button>' +
-        '<button class="mini-btn del" data-id="' + id + '">Excluir</button>' +
+  const folderIds = Object.keys(pastasCache).sort((a, b) =>
+    (pastasCache[a].nome || '').localeCompare(pastasCache[b].nome || '', 'pt-BR')
+  );
+
+  // Grouped-by-folder blocks
+  folderIds.forEach(fid => {
+    const f = pastasCache[fid];
+    const idsInFolder = groupIds
+      .filter(id => groupsCache[id].pastaId === fid)
+      .sort((a, b) => (groupsCache[a].nome || '').localeCompare(groupsCache[b].nome || '', 'pt-BR'));
+
+    if (!idsInFolder.length) return; // hide empty folders from the groups view (still visible has no groups)
+
+    const mineFolder = isMine(f);
+    const block = document.createElement('div');
+    block.className = 'folder-block';
+    block.innerHTML =
+      '<div class="folder-header">' +
+        '<div class="folder-title">' +
+          '<span class="folder-icon">▸</span>' +
+          '<span class="folder-name">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
+        '</div>' +
+        '<div class="folder-title">' +
+          '<span class="folder-owner">' + escapeHtml(f.criadoPorEmail || 'desconhecido') + '</span>' +
+          (mineFolder ? '<button class="mini-btn del-folder" data-id="' + fid + '">Excluir pasta</button>' : '') +
+        '</div>' +
       '</div>';
-    groupsList.appendChild(row);
+    const groupsWrap = document.createElement('div');
+    groupsWrap.className = 'folder-groups';
+    idsInFolder.forEach(id => groupsWrap.appendChild(buildGroupItemEl(id, groupsCache[id])));
+    block.appendChild(groupsWrap);
+    groupsList.appendChild(block);
   });
+
+  // Ungrouped groups (no pastaId, or pastaId pointing to a folder that no longer exists)
+  const looseIds = groupIds
+    .filter(id => !groupsCache[id].pastaId || !pastasCache[groupsCache[id].pastaId])
+    .sort((a, b) => (groupsCache[a].nome || '').localeCompare(groupsCache[b].nome || '', 'pt-BR'));
+
+  if (looseIds.length) {
+    if (folderIds.some(fid => groupIds.some(id => groupsCache[id].pastaId === fid))) {
+      const heading = document.createElement('div');
+      heading.className = 'no-folder-heading';
+      heading.textContent = 'Sem pasta';
+      groupsList.appendChild(heading);
+    }
+    looseIds.forEach(id => groupsList.appendChild(buildGroupItemEl(id, groupsCache[id])));
+  }
 }
 
 onSnapshot(GROUPS_COLLECTION, (snap) => {
@@ -961,9 +1425,52 @@ onSnapshot(GROUPS_COLLECTION, (snap) => {
   groupsList.innerHTML = '<div class="groups-empty">Não foi possível carregar os grupos: ' + err.message + '</div>';
 });
 
+onSnapshot(PASTAS_COLLECTION, (snap) => {
+  pastasCache = {};
+  snap.forEach(d => { pastasCache[d.id] = d.data(); });
+  renderFolderSelectOptions();
+  renderGroups();
+}, (err) => {
+  console.error('Falha ao carregar pastas', err);
+});
+
+saveFolderBtn.addEventListener('click', async () => {
+  const name = folderNameInput.value.trim();
+  if (!currentUser) return;
+  if (!name) {
+    statusEl.textContent = 'Dê um nome para a pasta antes de criar.';
+    statusEl.style.color = 'var(--warn)';
+    folderNameInput.focus();
+    return;
+  }
+  saveFolderBtn.disabled = true;
+  try {
+    await addDoc(PASTAS_COLLECTION, {
+      nome: name,
+      criadoPor: currentUser.uid,
+      criadoPorEmail: currentUser.email
+    });
+    folderNameInput.value = '';
+    statusEl.textContent = 'Pasta "' + name + '" criada.';
+    statusEl.style.color = 'var(--ok)';
+  } catch (err) {
+    statusEl.textContent = 'Erro ao criar pasta: ' + err.message;
+    statusEl.style.color = 'var(--warn)';
+  } finally {
+    saveFolderBtn.disabled = false;
+  }
+});
+
+folderNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') saveFolderBtn.click();
+});
+
 saveGroupBtn.addEventListener('click', async () => {
   const name = groupNameInput.value.trim();
   const teams = parseTeams(teamsInput.value);
+  const pastaId = groupFolderSelect.value || null;
+
+  if (!currentUser) return;
 
   if (!name) {
     statusEl.textContent = 'Dê um nome para o grupo antes de salvar.';
@@ -976,6 +1483,12 @@ saveGroupBtn.addEventListener('click', async () => {
     statusEl.style.color = 'var(--warn)';
     return;
   }
+  // A folder can only receive groups from the user who created it.
+  if (pastaId && !isMine(pastasCache[pastaId])) {
+    statusEl.textContent = 'Você só pode adicionar grupos nas pastas que você criou.';
+    statusEl.style.color = 'var(--warn)';
+    return;
+  }
 
   saveGroupBtn.disabled = true;
   try {
@@ -983,9 +1496,28 @@ saveGroupBtn.addEventListener('click', async () => {
       id => (groupsCache[id].nome || '').toLowerCase() === name.toLowerCase()
     );
     if (existingId) {
-      await setDoc(doc(GROUPS_COLLECTION, existingId), { nome: name, equipes: teams });
+      const existing = groupsCache[existingId];
+      if (!isMine(existing)) {
+        statusEl.textContent = 'Já existe um grupo com esse nome, criado por outro usuário. Escolha outro nome.';
+        statusEl.style.color = 'var(--warn)';
+        saveGroupBtn.disabled = false;
+        return;
+      }
+      await setDoc(doc(GROUPS_COLLECTION, existingId), {
+        nome: name,
+        equipes: teams,
+        pastaId: pastaId,
+        criadoPor: existing.criadoPor,
+        criadoPorEmail: existing.criadoPorEmail
+      });
     } else {
-      await addDoc(GROUPS_COLLECTION, { nome: name, equipes: teams });
+      await addDoc(GROUPS_COLLECTION, {
+        nome: name,
+        equipes: teams,
+        pastaId: pastaId,
+        criadoPor: currentUser.uid,
+        criadoPorEmail: currentUser.email
+      });
     }
     groupNameInput.value = '';
     statusEl.textContent = 'Grupo "' + name + '" salvo com ' + teams.length + ' equipe(s).';
@@ -1006,13 +1538,23 @@ groupsList.addEventListener('click', async (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
   const id = btn.dataset.id;
-  const g = groupsCache[id];
-  if (!g) return;
 
   if (btn.classList.contains('use')) {
+    const g = groupsCache[id];
+    if (!g) return;
     teamsInput.value = (g.equipes || []).join(' ');
     updateRunState();
-  } else if (btn.classList.contains('del')) {
+    return;
+  }
+
+  if (btn.classList.contains('del')) {
+    const g = groupsCache[id];
+    if (!g) return;
+    if (!isMine(g)) {
+      statusEl.textContent = 'Só quem criou o grupo pode excluí-lo.';
+      statusEl.style.color = 'var(--warn)';
+      return;
+    }
     if (confirm('Excluir o grupo "' + (g.nome || '') + '"?')) {
       try {
         await deleteDoc(doc(GROUPS_COLLECTION, id));
@@ -1021,11 +1563,40 @@ groupsList.addEventListener('click', async (e) => {
         statusEl.style.color = 'var(--warn)';
       }
     }
+    return;
+  }
+
+  if (btn.classList.contains('del-folder')) {
+    const f = pastasCache[id];
+    if (!f) return;
+    if (!isMine(f)) {
+      statusEl.textContent = 'Só quem criou a pasta pode excluí-la.';
+      statusEl.style.color = 'var(--warn)';
+      return;
+    }
+    const hasGroups = Object.values(groupsCache).some(g => g.pastaId === id);
+    const msg = hasGroups
+      ? 'Excluir a pasta "' + (f.nome || '') + '"? Os grupos dentro dela vão ficar sem pasta.'
+      : 'Excluir a pasta "' + (f.nome || '') + '"?';
+    if (confirm(msg)) {
+      try {
+        await deleteDoc(doc(PASTAS_COLLECTION, id));
+        // Detach any groups that pointed at this folder.
+        const affected = Object.keys(groupsCache).filter(gid => groupsCache[gid].pastaId === id);
+        for (const gid of affected) {
+          const g = groupsCache[gid];
+          await setDoc(doc(GROUPS_COLLECTION, gid), { ...g, pastaId: null });
+        }
+      } catch (err) {
+        statusEl.textContent = 'Erro ao excluir pasta: ' + err.message;
+        statusEl.style.color = 'var(--warn)';
+      }
+    }
   }
 });
 
 // ---------- Init ----------
-loadSharedData();
+// Os dados são carregados após o login, veja tryLogin().
 </script>
 
 </body>
