@@ -604,7 +604,7 @@
     outline-offset: 1px;
   }
 
-  .folder-add-team.hidden { display: none; }
+
 
   /* --- Discreet per-folder actions menu (kebab) --- */
   .folder-menu-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
@@ -1087,7 +1087,6 @@ let draggingFolderId = null; // id of the folder currently being dragged, if any
 let selectedTeams = []; // teams currently loaded for filtering, picked from a folder
 let selectedFolderId = null; // id of the folder currently selected for filtering (double-click)
 let selectedFolderName = ''; // display name of that folder
-let addTeamOpenIds = new Set(); // ids of folders whose "add team" input row is currently shown
 
 const HIDDEN_COLUMNS = ['PARECER'];
 
@@ -1162,7 +1161,6 @@ async function doLogout() {
   selectedTeams = [];
   selectedFolderId = null;
   selectedFolderName = '';
-  addTeamOpenIds = new Set();
   loginUser.value = '';
   loginPass.value = '';
   loginError.textContent = '';
@@ -1715,7 +1713,6 @@ function buildFolderEl(id, f) {
   // Only leaf folders (no subfolders) hold teams. Parent folders are purely
   // organizational and never show a team list or "add team" option.
   const isLeaf = childIds.length === 0;
-  const addTeamOpen = addTeamOpenIds.has(id);
 
   const block = document.createElement('div');
   block.className = 'folder-block' + (id === selectedFolderId ? ' folder-selected' : '');
@@ -1724,7 +1721,7 @@ function buildFolderEl(id, f) {
   const header = document.createElement('div');
   header.className = 'folder-header';
   header.innerHTML =
-    '<div class="folder-title selectable" title="Clique duas vezes para selecionar esta pasta para filtrar">' +
+    '<div class="folder-title selectable" title="Clique para selecionar esta pasta para filtrar">' +
       '<button class="folder-toggle' + (collapsed ? ' collapsed' : '') + '" data-id="' + id + '" title="Expandir/recolher pasta">▾</button>' +
       folderIconSvg() +
       '<span class="folder-name" data-id="' + id + '">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
@@ -1738,7 +1735,6 @@ function buildFolderEl(id, f) {
           '<div class="folder-menu" data-id="' + id + '">' +
             '<button class="folder-menu-item rename-folder" data-id="' + id + '">Renomear</button>' +
             '<button class="folder-menu-item del del-folder" data-id="' + id + '">Excluir pasta</button>' +
-            (isLeaf ? '<button class="folder-menu-item add-team-toggle" data-id="' + id + '">Adicionar equipe</button>' : '') +
           '</div>' +
         '</div>'
         : '') +
@@ -1763,10 +1759,10 @@ function buildFolderEl(id, f) {
     });
   }
 
-  // Double-clicking the folder's title area (but not its buttons) selects
+  // A single click on the folder's title area (but not its buttons) selects
   // it for filtering, replacing the old "Usar equipes" button.
   const titleEl = header.querySelector('.folder-title.selectable');
-  titleEl.addEventListener('dblclick', (e) => {
+  titleEl.addEventListener('click', (e) => {
     if (e.target.closest('button')) return;
     selectFolderForFilter(id);
   });
@@ -1817,7 +1813,7 @@ function buildFolderEl(id, f) {
 
     if (mine) {
       const addRow = document.createElement('div');
-      addRow.className = 'folder-add-team' + (addTeamOpen ? '' : ' hidden');
+      addRow.className = 'folder-add-team';
       addRow.innerHTML =
         '<input type="text" placeholder="Adicionar equipe(s) nesta pasta, ex: SER050T SER052T" data-id="' + id + '">' +
         '<button class="mini-btn add-team-btn" data-id="' + id + '">Adicionar</button>';
@@ -1972,15 +1968,6 @@ groupsList.addEventListener('click', async (e) => {
     groupsList.querySelectorAll('.folder-menu.open').forEach(m => m.classList.remove('open'));
     const nameSpan = groupsList.querySelector('.folder-name[data-id="' + id + '"]');
     if (nameSpan) startRenameFolder(id, nameSpan);
-    return;
-  }
-
-  if (btn.classList.contains('add-team-toggle')) {
-    groupsList.querySelectorAll('.folder-menu.open').forEach(m => m.classList.remove('open'));
-    if (addTeamOpenIds.has(id)) addTeamOpenIds.delete(id); else addTeamOpenIds.add(id);
-    renderFolders();
-    const input = groupsList.querySelector('.folder-add-team input[data-id="' + id + '"]');
-    if (input) input.focus();
     return;
   }
 
