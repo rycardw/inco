@@ -319,6 +319,12 @@
     border-top: 1px dashed var(--line);
   }
 
+  .groups-block.no-top-border {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
   .groups-block h3 {
     font-family: var(--mono);
     font-size: 11.5px;
@@ -462,6 +468,20 @@
     font-size: 13.5px;
     color: var(--ink);
   }
+
+  .folder-rename-input {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--ink);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 1px 5px;
+    background: #fff;
+    max-width: 240px;
+  }
+
+  .folder-rename-input:focus { outline: none; }
 
   .folder-owner {
     font-family: var(--mono);
@@ -909,14 +929,7 @@
   </section>
 
   <section class="panel" data-step="02 · Equipes">
-    <h2>Cole as equipes</h2>
-    <textarea id="teamsInput" placeholder="SER050T SER052T SER055T SER056T SER103T SER133T ..."></textarea>
-    <div class="counts">
-      <span>Equipes detectadas: <b id="teamCount">0</b></span>
-    </div>
-    <div class="chips" id="teamChips"></div>
-
-    <div class="groups-block">
+    <div class="groups-block no-top-border">
       <h3>Pastas</h3>
       <div class="groups-head">
         <input type="text" id="folderNameInput" placeholder="Nome da pasta (ex: Zona Sul)">
@@ -928,6 +941,11 @@
       <div class="groups-list" id="groupsList"></div>
       <div class="root-drop-zone" id="rootDropZone">Solte aqui para mover a pasta para a raiz (fora de qualquer pasta-mãe)</div>
     </div>
+
+    <div class="counts">
+      <span>Equipes selecionadas: <b id="teamCount">0</b></span>
+    </div>
+    <div class="chips" id="teamChips"></div>
   </section>
 
   <div class="run-row">
@@ -1014,6 +1032,7 @@ let pastasCache = {}; // id -> { nome, parentId, equipes: string[], criadoPor, c
 let currentUser = null; // { uid, email } of the logged-in user
 let collapsedIds = new Set(); // ids of folders currently collapsed in the tree
 let draggingFolderId = null; // id of the folder currently being dragged, if any
+let selectedTeams = []; // teams currently loaded for filtering, picked from a folder
 
 const HIDDEN_COLUMNS = ['PARECER'];
 
@@ -1023,7 +1042,6 @@ const adminBlock = document.getElementById('adminBlock');
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const dzFilename = document.getElementById('dzFilename');
-const teamsInput = document.getElementById('teamsInput');
 const teamCount = document.getElementById('teamCount');
 const teamChips = document.getElementById('teamChips');
 const runBtn = document.getElementById('runBtn');
@@ -1085,7 +1103,7 @@ async function doLogout() {
   headers = [];
   adminBlock.classList.remove('open');
   resultsPanel.style.display = 'none';
-  teamsInput.value = '';
+  selectedTeams = [];
   loginUser.value = '';
   loginPass.value = '';
   loginError.textContent = '';
@@ -1323,7 +1341,7 @@ function renderChips(teams) {
 }
 
 function updateRunState() {
-  const teams = parseTeams(teamsInput.value);
+  const teams = selectedTeams;
   teamCount.textContent = teams.length;
   renderChips(teams);
   runBtn.disabled = !(sheetRows.length && equipeColIndex !== -1 && teams.length);
@@ -1456,7 +1474,7 @@ function renderInconsCards(matchedRows, visibleIndices) {
 }
 
 function runFilter() {
-  const teams = parseTeams(teamsInput.value);
+  const teams = selectedTeams;
   const teamSet = new Set(teams);
 
   const matchedRows = sheetRows.filter(row => {
@@ -1486,7 +1504,7 @@ function runFilter() {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = visibleIndices.length || 1;
-    td.innerHTML = '<div class="empty-state"><div class="big">—</div>Nenhuma linha corresponde às equipes coladas.</div>';
+    td.innerHTML = '<div class="empty-state"><div class="big">—</div>Nenhuma linha corresponde às equipes selecionadas.</div>';
     tr.appendChild(td);
     tableBody.appendChild(tr);
     resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1507,7 +1525,6 @@ function runFilter() {
   resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-teamsInput.addEventListener('input', updateRunState);
 runBtn.addEventListener('click', runFilter);
 
 // ---------- Folders (nested, Firestore, real-time) ----------
@@ -1588,6 +1605,62 @@ async function moveFolder(draggedId, newParentId) {
   }
 }
 
+async function renameFolder(id, newName) {
+  const f = pastasCache[id];
+  if (!f) return;
+  if (!isMine(f)) {
+    statusEl.textContent = 'Só quem criou a pasta pode renomeá-la.';
+    statusEl.style.color = 'var(--warn)';
+    return;
+  }
+  const name = newName.trim();
+  if (!name || name === f.nome) return;
+  try {
+    await setDoc(doc(PASTAS_COLLECTION, id), { ...f, nome: name });
+  } catch (err) {
+    statusEl.textContent = 'Erro ao renomear pasta: ' + err.message;
+    statusEl.style.color = 'var(--warn)';
+  }
+}
+
+// Turns a folder's name into an editable text field, Explorer-style.
+// Enter/blur saves, Escape cancels. Re-rendering the tree (either from a
+// successful save via onSnapshot, or manually on cancel) restores the
+// normal <span> display.
+function startRenameFolder(id, nameSpan) {
+  const f = pastasCache[id];
+  if (!f || !isMine(f) || nameSpan.querySelector('input')) return;
+
+  const originalName = f.nome || '';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'folder-rename-input';
+  input.value = originalName;
+  nameSpan.textContent = '';
+  nameSpan.appendChild(input);
+  input.focus();
+  input.select();
+
+  let settled = false;
+  const finish = async (save) => {
+    if (settled) return;
+    settled = true;
+    if (save && input.value.trim() && input.value.trim() !== originalName) {
+      await renameFolder(id, input.value);
+    } else {
+      renderFolders();
+    }
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', (e) => e.stopPropagation());
+  input.addEventListener('mousedown', (e) => e.stopPropagation());
+}
+
 function buildFolderEl(id, f) {
   const teams = f.equipes || [];
   const mine = isMine(f);
@@ -1606,12 +1679,13 @@ function buildFolderEl(id, f) {
     '<div class="folder-title">' +
       '<button class="folder-toggle' + (collapsed ? ' collapsed' : '') + '" data-id="' + id + '" title="Expandir/recolher pasta">▾</button>' +
       folderIconSvg() +
-      '<span class="folder-name">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
+      '<span class="folder-name" data-id="' + id + '">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
       '<span class="group-count">' + teams.length + ' equipe(s)' + (childIds.length ? ' · ' + childIds.length + ' subpasta(s)' : '') + '</span>' +
     '</div>' +
     '<div class="folder-title">' +
       '<span class="folder-owner">' + escapeHtml(f.criadoPorEmail || 'desconhecido') + '</span>' +
       '<button class="mini-btn use-folder" data-id="' + id + '">Usar equipes</button>' +
+      (mine ? '<button class="mini-btn rename-folder" data-id="' + id + '">Renomear</button>' : '') +
       (mine ? '<button class="mini-btn del del-folder" data-id="' + id + '">Excluir pasta</button>' : '') +
     '</div>';
 
@@ -1619,6 +1693,7 @@ function buildFolderEl(id, f) {
     header.classList.add('draggable');
     header.draggable = true;
     header.addEventListener('dragstart', (e) => {
+      if (e.target.closest('input')) { e.preventDefault(); return; }
       draggingFolderId = id;
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', id);
@@ -1630,6 +1705,13 @@ function buildFolderEl(id, f) {
       block.classList.remove('dragging');
       rootDropZone.classList.remove('show', 'drag-over');
       document.querySelectorAll('.folder-header.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+
+    const nameSpan = header.querySelector('.folder-name');
+    nameSpan.title = 'Clique duas vezes para renomear';
+    nameSpan.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      startRenameFolder(id, nameSpan);
     });
   }
 
@@ -1789,8 +1871,18 @@ groupsList.addEventListener('click', async (e) => {
   if (btn.classList.contains('use-folder')) {
     const f = pastasCache[id];
     if (!f) return;
-    teamsInput.value = (f.equipes || []).join(' ');
+    selectedTeams = (f.equipes || []).slice();
     updateRunState();
+    statusEl.textContent = selectedTeams.length
+      ? 'Equipes carregadas da pasta "' + (f.nome || '') + '" (' + selectedTeams.length + ').'
+      : 'A pasta "' + (f.nome || '') + '" não tem equipes salvas.';
+    statusEl.style.color = selectedTeams.length ? 'var(--ok)' : 'var(--warn)';
+    return;
+  }
+
+  if (btn.classList.contains('rename-folder')) {
+    const nameSpan = groupsList.querySelector('.folder-name[data-id="' + id + '"]');
+    if (nameSpan) startRenameFolder(id, nameSpan);
     return;
   }
 
