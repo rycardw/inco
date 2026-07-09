@@ -604,6 +604,58 @@
     outline-offset: 1px;
   }
 
+  .folder-add-team.hidden { display: none; }
+
+  /* --- Discreet per-folder actions menu (kebab) --- */
+  .folder-menu-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
+
+  .folder-menu-btn {
+    padding: 6px 10px;
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .folder-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    box-shadow: 0 6px 16px rgba(13, 43, 62, 0.14);
+    display: none;
+    flex-direction: column;
+    min-width: 168px;
+    z-index: 30;
+    overflow: hidden;
+  }
+
+  .folder-menu.open { display: flex; }
+
+  .folder-menu-item {
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .folder-menu-item:hover { background: #eaf4f4; color: var(--accent-deep); }
+  .folder-menu-item.del:hover { background: var(--warn); color: #fff; }
+
+  .folder-block.folder-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .folder-title.selectable { cursor: pointer; }
+
   .root-drop-zone {
     display: none;
     margin-top: 8px;
@@ -943,9 +995,8 @@
     </div>
 
     <div class="counts">
-      <span>Equipes selecionadas: <b id="teamCount">0</b></span>
+      <span>Pasta selecionada: <b id="selectedFolderLabel">Nenhuma</b></span>
     </div>
-    <div class="chips" id="teamChips"></div>
   </section>
 
   <div class="run-row">
@@ -1031,8 +1082,12 @@ let descColIndex = -1;
 let pastasCache = {}; // id -> { nome, parentId, equipes: string[], criadoPor, criadoPorEmail }
 let currentUser = null; // { uid, email } of the logged-in user
 let collapsedIds = new Set(); // ids of folders currently collapsed in the tree
+let knownFolderIds = new Set(); // ids we've already assigned a default (collapsed) state to
 let draggingFolderId = null; // id of the folder currently being dragged, if any
 let selectedTeams = []; // teams currently loaded for filtering, picked from a folder
+let selectedFolderId = null; // id of the folder currently selected for filtering (double-click)
+let selectedFolderName = ''; // display name of that folder
+let addTeamOpenIds = new Set(); // ids of folders whose "add team" input row is currently shown
 
 const HIDDEN_COLUMNS = ['PARECER'];
 
@@ -1042,8 +1097,7 @@ const adminBlock = document.getElementById('adminBlock');
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const dzFilename = document.getElementById('dzFilename');
-const teamCount = document.getElementById('teamCount');
-const teamChips = document.getElementById('teamChips');
+const selectedFolderLabel = document.getElementById('selectedFolderLabel');
 const runBtn = document.getElementById('runBtn');
 const statusEl = document.getElementById('status');
 const resultsPanel = document.getElementById('results-panel');
@@ -1099,11 +1153,16 @@ async function doLogout() {
   currentUser = null;
   currentUserIsAdmin = false;
   pastasCache = {};
+  collapsedIds = new Set();
+  knownFolderIds = new Set();
   sheetRows = [];
   headers = [];
   adminBlock.classList.remove('open');
   resultsPanel.style.display = 'none';
   selectedTeams = [];
+  selectedFolderId = null;
+  selectedFolderName = '';
+  addTeamOpenIds = new Set();
   loginUser.value = '';
   loginPass.value = '';
   loginError.textContent = '';
@@ -1324,26 +1383,11 @@ dropzone.addEventListener('drop', (e) => {
 });
 
 // ---------- Team paste + filter ----------
-function renderChips(teams) {
-  teamChips.innerHTML = '';
-  teams.slice(0, 60).forEach(t => {
-    const span = document.createElement('span');
-    span.className = 'chip';
-    span.textContent = t;
-    teamChips.appendChild(span);
-  });
-  if (teams.length > 60) {
-    const span = document.createElement('span');
-    span.className = 'chip';
-    span.textContent = '+' + (teams.length - 60) + ' outras';
-    teamChips.appendChild(span);
-  }
-}
-
 function updateRunState() {
   const teams = selectedTeams;
-  teamCount.textContent = teams.length;
-  renderChips(teams);
+  selectedFolderLabel.textContent = selectedFolderId
+    ? (selectedFolderName || '(sem nome)') + ' — ' + teams.length + ' equipe(s)'
+    : 'Nenhuma';
   runBtn.disabled = !(sheetRows.length && equipeColIndex !== -1 && teams.length);
 }
 
@@ -1668,25 +1712,36 @@ function buildFolderEl(id, f) {
     .filter(cid => pastasCache[cid].parentId === id)
     .sort((a, b) => (pastasCache[a].nome || '').localeCompare(pastasCache[b].nome || '', 'pt-BR'));
   const collapsed = collapsedIds.has(id);
+  // Only leaf folders (no subfolders) hold teams. Parent folders are purely
+  // organizational and never show a team list or "add team" option.
+  const isLeaf = childIds.length === 0;
+  const addTeamOpen = addTeamOpenIds.has(id);
 
   const block = document.createElement('div');
-  block.className = 'folder-block';
+  block.className = 'folder-block' + (id === selectedFolderId ? ' folder-selected' : '');
   block.dataset.id = id;
 
   const header = document.createElement('div');
   header.className = 'folder-header';
   header.innerHTML =
-    '<div class="folder-title">' +
+    '<div class="folder-title selectable" title="Clique duas vezes para selecionar esta pasta para filtrar">' +
       '<button class="folder-toggle' + (collapsed ? ' collapsed' : '') + '" data-id="' + id + '" title="Expandir/recolher pasta">▾</button>' +
       folderIconSvg() +
       '<span class="folder-name" data-id="' + id + '">' + escapeHtml(f.nome || '(sem nome)') + '</span>' +
-      '<span class="group-count">' + teams.length + ' equipe(s)' + (childIds.length ? ' · ' + childIds.length + ' subpasta(s)' : '') + '</span>' +
+      '<span class="group-count">' + (isLeaf ? teams.length + ' equipe(s)' : childIds.length + ' subpasta(s)') + '</span>' +
     '</div>' +
     '<div class="folder-title">' +
       '<span class="folder-owner">' + escapeHtml(f.criadoPorEmail || 'desconhecido') + '</span>' +
-      '<button class="mini-btn use-folder" data-id="' + id + '">Usar equipes</button>' +
-      (mine ? '<button class="mini-btn rename-folder" data-id="' + id + '">Renomear</button>' : '') +
-      (mine ? '<button class="mini-btn del del-folder" data-id="' + id + '">Excluir pasta</button>' : '') +
+      (mine ?
+        '<div class="folder-menu-wrap">' +
+          '<button class="mini-btn folder-menu-btn" data-id="' + id + '" title="Mais opções">⋮</button>' +
+          '<div class="folder-menu" data-id="' + id + '">' +
+            '<button class="folder-menu-item rename-folder" data-id="' + id + '">Renomear</button>' +
+            '<button class="folder-menu-item del del-folder" data-id="' + id + '">Excluir pasta</button>' +
+            (isLeaf ? '<button class="folder-menu-item add-team-toggle" data-id="' + id + '">Adicionar equipe</button>' : '') +
+          '</div>' +
+        '</div>'
+        : '') +
     '</div>';
 
   if (mine) {
@@ -1706,14 +1761,15 @@ function buildFolderEl(id, f) {
       rootDropZone.classList.remove('show', 'drag-over');
       document.querySelectorAll('.folder-header.drag-over').forEach(el => el.classList.remove('drag-over'));
     });
-
-    const nameSpan = header.querySelector('.folder-name');
-    nameSpan.title = 'Clique duas vezes para renomear';
-    nameSpan.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      startRenameFolder(id, nameSpan);
-    });
   }
+
+  // Double-clicking the folder's title area (but not its buttons) selects
+  // it for filtering, replacing the old "Usar equipes" button.
+  const titleEl = header.querySelector('.folder-title.selectable');
+  titleEl.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button')) return;
+    selectFolderForFilter(id);
+  });
 
   // This folder's header is also a drop target: dropping another (owned)
   // folder here makes it a subfolder, as long as it doesn't create a cycle.
@@ -1740,31 +1796,33 @@ function buildFolderEl(id, f) {
   const body = document.createElement('div');
   body.className = 'folder-body' + (collapsed ? ' collapsed' : '');
 
-  const teamsWrap = document.createElement('div');
-  teamsWrap.className = 'folder-teams-list';
-  if (teams.length) {
-    teams.forEach(t => {
-      const chip = document.createElement('span');
-      chip.className = 'folder-team-chip';
-      chip.innerHTML = escapeHtml(t) +
-        (mine ? ' <button class="del-team" data-id="' + id + '" data-team="' + escapeHtml(t) + '" title="Remover esta equipe da pasta">×</button>' : '');
-      teamsWrap.appendChild(chip);
-    });
-  } else {
-    const empty = document.createElement('span');
-    empty.className = 'folder-empty-note';
-    empty.textContent = 'Nenhuma equipe nesta pasta.';
-    teamsWrap.appendChild(empty);
-  }
-  body.appendChild(teamsWrap);
+  if (isLeaf) {
+    const teamsWrap = document.createElement('div');
+    teamsWrap.className = 'folder-teams-list';
+    if (teams.length) {
+      teams.forEach(t => {
+        const chip = document.createElement('span');
+        chip.className = 'folder-team-chip';
+        chip.innerHTML = escapeHtml(t) +
+          (mine ? ' <button class="del-team" data-id="' + id + '" data-team="' + escapeHtml(t) + '" title="Remover esta equipe da pasta">×</button>' : '');
+        teamsWrap.appendChild(chip);
+      });
+    } else {
+      const empty = document.createElement('span');
+      empty.className = 'folder-empty-note';
+      empty.textContent = 'Nenhuma equipe nesta pasta.';
+      teamsWrap.appendChild(empty);
+    }
+    body.appendChild(teamsWrap);
 
-  if (mine) {
-    const addRow = document.createElement('div');
-    addRow.className = 'folder-add-team';
-    addRow.innerHTML =
-      '<input type="text" placeholder="Adicionar equipe(s) nesta pasta, ex: SER050T SER052T" data-id="' + id + '">' +
-      '<button class="mini-btn add-team-btn" data-id="' + id + '">Adicionar</button>';
-    body.appendChild(addRow);
+    if (mine) {
+      const addRow = document.createElement('div');
+      addRow.className = 'folder-add-team' + (addTeamOpen ? '' : ' hidden');
+      addRow.innerHTML =
+        '<input type="text" placeholder="Adicionar equipe(s) nesta pasta, ex: SER050T SER052T" data-id="' + id + '">' +
+        '<button class="mini-btn add-team-btn" data-id="' + id + '">Adicionar</button>';
+      body.appendChild(addRow);
+    }
   }
 
   if (childIds.length) {
@@ -1776,6 +1834,23 @@ function buildFolderEl(id, f) {
 
   block.appendChild(body);
   return block;
+}
+
+// Selects a folder as the active filter (double-click on its row), loading
+// its saved teams into selectedTeams. Replaces the previous "Usar equipes"
+// button.
+function selectFolderForFilter(id) {
+  const f = pastasCache[id];
+  if (!f) return;
+  selectedTeams = (f.equipes || []).slice();
+  selectedFolderId = id;
+  selectedFolderName = f.nome || '';
+  updateRunState();
+  statusEl.textContent = selectedTeams.length
+    ? 'Equipes carregadas da pasta "' + (f.nome || '') + '" (' + selectedTeams.length + ').'
+    : 'A pasta "' + (f.nome || '') + '" não tem equipes salvas.';
+  statusEl.style.color = selectedTeams.length ? 'var(--ok)' : 'var(--warn)';
+  renderFolders();
 }
 
 function renderFolders() {
@@ -1806,7 +1881,16 @@ function subscribeFolders() {
   if (foldersUnsub) return; // já inscrito, evita duplicar o listener
   foldersUnsub = onSnapshot(PASTAS_COLLECTION, (snap) => {
     pastasCache = {};
-    snap.forEach(d => { pastasCache[d.id] = d.data(); });
+    snap.forEach(d => {
+      pastasCache[d.id] = d.data();
+      // First time we see this folder (e.g. right after login, or a brand
+      // new folder appearing in real time): start it collapsed. Folders the
+      // user has already expanded/collapsed by hand keep their state.
+      if (!knownFolderIds.has(d.id)) {
+        knownFolderIds.add(d.id);
+        collapsedIds.add(d.id);
+      }
+    });
     renderFolderParentOptions();
     renderFolders();
   }, (err) => {
@@ -1862,27 +1946,41 @@ groupsList.addEventListener('click', async (e) => {
   if (!btn) return;
   const id = btn.dataset.id;
 
+  // Any click on a folder button other than the kebab itself closes any
+  // open per-folder menu, so it doesn't linger after an action.
+  if (!btn.classList.contains('folder-menu-btn')) {
+    groupsList.querySelectorAll('.folder-menu.open').forEach(m => m.classList.remove('open'));
+  }
+
   if (btn.classList.contains('folder-toggle')) {
     if (collapsedIds.has(id)) collapsedIds.delete(id); else collapsedIds.add(id);
     renderFolders();
     return;
   }
 
-  if (btn.classList.contains('use-folder')) {
-    const f = pastasCache[id];
-    if (!f) return;
-    selectedTeams = (f.equipes || []).slice();
-    updateRunState();
-    statusEl.textContent = selectedTeams.length
-      ? 'Equipes carregadas da pasta "' + (f.nome || '') + '" (' + selectedTeams.length + ').'
-      : 'A pasta "' + (f.nome || '') + '" não tem equipes salvas.';
-    statusEl.style.color = selectedTeams.length ? 'var(--ok)' : 'var(--warn)';
+  if (btn.classList.contains('folder-menu-btn')) {
+    e.stopPropagation();
+    const menu = groupsList.querySelector('.folder-menu[data-id="' + id + '"]');
+    if (!menu) return;
+    const wasOpen = menu.classList.contains('open');
+    groupsList.querySelectorAll('.folder-menu.open').forEach(m => m.classList.remove('open'));
+    if (!wasOpen) menu.classList.add('open');
     return;
   }
 
   if (btn.classList.contains('rename-folder')) {
+    groupsList.querySelectorAll('.folder-menu.open').forEach(m => m.classList.remove('open'));
     const nameSpan = groupsList.querySelector('.folder-name[data-id="' + id + '"]');
     if (nameSpan) startRenameFolder(id, nameSpan);
+    return;
+  }
+
+  if (btn.classList.contains('add-team-toggle')) {
+    groupsList.querySelectorAll('.folder-menu.open').forEach(m => m.classList.remove('open'));
+    if (addTeamOpenIds.has(id)) addTeamOpenIds.delete(id); else addTeamOpenIds.add(id);
+    renderFolders();
+    const input = groupsList.querySelector('.folder-add-team input[data-id="' + id + '"]');
+    if (input) input.focus();
     return;
   }
 
@@ -1959,6 +2057,13 @@ groupsList.addEventListener('click', async (e) => {
       }
     }
   }
+});
+
+// Closes any open per-folder kebab menu when the user clicks anywhere
+// outside of it (menus opened via .folder-menu-btn above).
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.folder-menu-wrap')) return;
+  groupsList.querySelectorAll('.folder-menu.open').forEach(m => m.classList.remove('open'));
 });
 
 groupsList.addEventListener('keydown', (e) => {
