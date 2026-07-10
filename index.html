@@ -865,6 +865,52 @@
     border-radius: 0;
   }
 
+  /* --- Second level: serviços executados dentro de cada inconsistência --- */
+  .servico-subgroups {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    background: var(--paper);
+  }
+
+  .servico-card {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .servico-card .incons-card-head { padding: 11px 14px; }
+  .servico-card .incons-card-title {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--ink);
+  }
+
+  /* --- Checkbox column: marcar linha como corrigida --- */
+  th.check-col, td.check-col {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    text-align: center;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  td.check-col input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--ok);
+  }
+
+  tbody tr.row-marked td {
+    background: #eaf6ee;
+    color: var(--ink-soft);
+  }
+
+  tbody tr.row-marked td.equipe { color: var(--ok); }
+
   footer {
     text-align: center;
     padding: 20px;
@@ -1079,6 +1125,7 @@ let sheetRows = [];
 let headers = [];
 let equipeColIndex = -1;
 let descColIndex = -1;
+let servicoColIndex = -1;
 let pastasCache = {}; // id -> { nome, parentId, equipes: string[], criadoPor, criadoPorEmail }
 let currentUser = null; // { uid, email } of the logged-in user
 let collapsedIds = new Set(); // ids of folders currently collapsed in the tree
@@ -1088,7 +1135,8 @@ let selectedTeams = []; // teams currently loaded for filtering, picked from a f
 let selectedFolderId = null; // id of the folder currently selected for filtering (double-click)
 let selectedFolderName = ''; // display name of that folder
 
-const HIDDEN_COLUMNS = ['PARECER'];
+// Columns matched by normalized name (accents stripped) that should never be shown as a table column
+const HIDDEN_COLUMNS = ['PARECER', 'LIGACAO'];
 
 const statusDot = document.getElementById('statusDot');
 const dataStatusText = document.getElementById('dataStatusText');
@@ -1193,6 +1241,46 @@ function findDescColumn(hdrs) {
   return idx;
 }
 
+function findServicoColumn(hdrs) {
+  const normalized = hdrs.map(normalizeHeader);
+  let idx = normalized.findIndex(h => h.includes('SERVICO') && h.includes('EXECUTADO'));
+  if (idx === -1) idx = normalized.findIndex(h => h.includes('SERVICO'));
+  return idx;
+}
+
+// ---------- "Marcar como corrigido" persistence (local ao navegador) ----------
+const MARKED_ROWS_KEY = 'inconsistencias_linhas_marcadas_v1';
+
+function loadMarkedRows() {
+  try {
+    const raw = localStorage.getItem(MARKED_ROWS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function saveMarkedRows() {
+  try {
+    localStorage.setItem(MARKED_ROWS_KEY, JSON.stringify(Array.from(markedRows)));
+  } catch (e) {
+    // Ignora falhas de armazenamento (ex.: modo privado)
+  }
+}
+
+let markedRows = loadMarkedRows();
+
+// Chave estável por conteúdo da linha, para identificar a mesma linha entre
+// carregamentos, independente da posição dela na planilha.
+function hashRowKey(row) {
+  const str = row.map(c => (c === undefined || c === null) ? '' : c.toString()).join('|');
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return 'r' + hash;
+}
+
 function parseTeams(raw) {
   if (!raw) return [];
   const upper = raw.toUpperCase();
@@ -1223,6 +1311,7 @@ async function loadSharedData() {
       sheetRows = [];
       equipeColIndex = -1;
       descColIndex = -1;
+      servicoColIndex = -1;
       updateRunState();
       return;
     }
@@ -1230,6 +1319,7 @@ async function loadSharedData() {
     headers = meta.headers || [];
     equipeColIndex = findEquipeColumn(headers);
     descColIndex = findDescColumn(headers);
+    servicoColIndex = findServicoColumn(headers);
 
     const rowsQuery = query(ROWS_COLLECTION, orderBy('index'));
     const rowsSnap = await getDocs(rowsQuery);
@@ -1393,6 +1483,12 @@ function buildRowTable(rows, visibleIndices) {
   const table = document.createElement('table');
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
+
+  const thCheck = document.createElement('th');
+  thCheck.className = 'check-col';
+  thCheck.textContent = '✓';
+  headRow.appendChild(thCheck);
+
   visibleIndices.forEach(i => {
     const th = document.createElement('th');
     th.textContent = headers[i];
@@ -1403,6 +1499,28 @@ function buildRowTable(rows, visibleIndices) {
   const tbody = document.createElement('tbody');
   rows.forEach(row => {
     const tr = document.createElement('tr');
+    const key = hashRowKey(row);
+    if (markedRows.has(key)) tr.classList.add('row-marked');
+
+    const tdCheck = document.createElement('td');
+    tdCheck.className = 'check-col';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.title = 'Marcar como corrigido';
+    checkbox.checked = markedRows.has(key);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        markedRows.add(key);
+        tr.classList.add('row-marked');
+      } else {
+        markedRows.delete(key);
+        tr.classList.remove('row-marked');
+      }
+      saveMarkedRows();
+    });
+    tdCheck.appendChild(checkbox);
+    tr.appendChild(tdCheck);
+
     visibleIndices.forEach(i => {
       const td = document.createElement('td');
       const val = row[i] !== undefined ? row[i] : '';
@@ -1420,6 +1538,10 @@ function buildRowTable(rows, visibleIndices) {
 
 function renderFlatTable(matchedRows, visibleIndices) {
   tableHead.innerHTML = '';
+  const thCheck = document.createElement('th');
+  thCheck.className = 'check-col';
+  thCheck.textContent = '✓';
+  tableHead.appendChild(thCheck);
   visibleIndices.forEach(i => {
     const th = document.createElement('th');
     th.textContent = headers[i];
@@ -1429,6 +1551,28 @@ function renderFlatTable(matchedRows, visibleIndices) {
   tableBody.innerHTML = '';
   matchedRows.forEach(row => {
     const tr = document.createElement('tr');
+    const key = hashRowKey(row);
+    if (markedRows.has(key)) tr.classList.add('row-marked');
+
+    const tdCheck = document.createElement('td');
+    tdCheck.className = 'check-col';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.title = 'Marcar como corrigido';
+    checkbox.checked = markedRows.has(key);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        markedRows.add(key);
+        tr.classList.add('row-marked');
+      } else {
+        markedRows.delete(key);
+        tr.classList.remove('row-marked');
+      }
+      saveMarkedRows();
+    });
+    tdCheck.appendChild(checkbox);
+    tr.appendChild(tdCheck);
+
     visibleIndices.forEach(i => {
       const td = document.createElement('td');
       const val = row[i] !== undefined ? row[i] : '';
@@ -1466,9 +1610,78 @@ function groupRowsByDesc(rows) {
   return Array.from(map.values());
 }
 
+function groupRowsByServico(rows) {
+  const map = new Map();
+  rows.forEach(row => {
+    const raw = row[servicoColIndex] !== undefined && row[servicoColIndex] !== null ? row[servicoColIndex].toString() : '';
+    const label = raw.trim() || '(sem serviço executado)';
+    if (!map.has(label)) map.set(label, { label, rows: [] });
+    map.get(label).rows.push(row);
+  });
+  return Array.from(map.values());
+}
+
+// Segundo nível: dentro de cada card de inconsistência, um acordeão por
+// serviço executado. Só é usado quando a coluna existe na planilha.
+function renderServiceSubgroups(rows, leafVisibleIndices) {
+  const container = document.createElement('div');
+  container.className = 'servico-subgroups';
+
+  groupRowsByServico(rows).forEach(sub => {
+    const card = document.createElement('div');
+    card.className = 'incons-card servico-card';
+
+    const headBtn = document.createElement('button');
+    headBtn.type = 'button';
+    headBtn.className = 'incons-card-head';
+
+    const title = document.createElement('span');
+    title.className = 'incons-card-title';
+    title.textContent = sub.label;
+
+    const count = document.createElement('span');
+    count.className = 'incons-card-count';
+    count.textContent = sub.rows.length + (sub.rows.length === 1 ? ' ocorrência' : ' ocorrências');
+
+    const toggle = document.createElement('span');
+    toggle.className = 'incons-toggle';
+    toggle.textContent = '+';
+
+    headBtn.appendChild(title);
+    headBtn.appendChild(count);
+    headBtn.appendChild(toggle);
+
+    const body = document.createElement('div');
+    body.className = 'incons-card-body';
+    body.hidden = true;
+
+    const bodyWrap = document.createElement('div');
+    bodyWrap.className = 'table-wrap';
+    bodyWrap.appendChild(buildRowTable(sub.rows, leafVisibleIndices));
+    body.appendChild(bodyWrap);
+
+    headBtn.addEventListener('click', () => {
+      const isOpen = card.classList.toggle('open');
+      body.hidden = !isOpen;
+      toggle.textContent = isOpen ? '×' : '+';
+    });
+
+    card.appendChild(headBtn);
+    card.appendChild(body);
+    container.appendChild(card);
+  });
+
+  return container;
+}
+
 function renderInconsCards(matchedRows, visibleIndices) {
   const groups = groupRowsByDesc(matchedRows);
   inconsCards.innerHTML = '';
+
+  // A descrição da inconsistência já aparece no título do card, e o serviço
+  // executado (quando existir) vira o título do sub-card — nenhum dos dois
+  // precisa se repetir como coluna dentro das tabelas de linhas.
+  const leafVisibleIndices = visibleIndices.filter(i => i !== descColIndex && i !== servicoColIndex);
 
   groups.forEach(group => {
     const card = document.createElement('div');
@@ -1500,7 +1713,11 @@ function renderInconsCards(matchedRows, visibleIndices) {
 
     const bodyWrap = document.createElement('div');
     bodyWrap.className = 'table-wrap';
-    bodyWrap.appendChild(buildRowTable(group.rows, visibleIndices));
+    if (servicoColIndex !== -1) {
+      bodyWrap.appendChild(renderServiceSubgroups(group.rows, leafVisibleIndices));
+    } else {
+      bodyWrap.appendChild(buildRowTable(group.rows, leafVisibleIndices));
+    }
     body.appendChild(bodyWrap);
 
     headBtn.addEventListener('click', () => {
@@ -1526,7 +1743,7 @@ function runFilter() {
 
   const visibleIndices = headers
     .map((h, i) => i)
-    .filter(i => !HIDDEN_COLUMNS.includes((headers[i] || '').toUpperCase()));
+    .filter(i => !HIDDEN_COLUMNS.includes(normalizeHeader(headers[i])));
 
   resultsPanel.style.display = 'block';
 
